@@ -14,10 +14,8 @@ setup(
         "transformers",
         "sentencepiece",
         "torch",
-        "Pillow",
         "torch",
         "accelerate",
-        "torchvision",
         "datasets==2.18.0"
     ],
     extras_require={
@@ -47,7 +45,6 @@ setup(
             "dask",
             "einops-exts",
             "datasets==2.18.0",
-            "open_clip_torch",
             "openai",
             "av"
         ],
@@ -60,7 +57,6 @@ setup(
             "openai",
             "tiktoken",
             "av",
-            "decord",
         ]
     }
 )
