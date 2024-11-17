@@ -1903,6 +1903,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
     
     
 class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
+    config_class = Qwen2ChunkingConfig
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):

@@ -186,6 +186,7 @@ class Qwen2Config(PretrainedConfig):
 
 
 class Qwen2ChunkingConfig(Qwen2Config):
+    model_type = "qwen2_chunking"
     def __init__(
         self, 
         num_layers_per_chunk=3, 
