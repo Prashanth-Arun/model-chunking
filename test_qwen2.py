@@ -1,13 +1,13 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from model_chunking.models.qwen2 import Qwen2ForCausalLM, Qwen2Tokenizer
 
-model_name = "Qwen/Qwen2.5-7B-Instruct"
+model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 
-model = AutoModelForCausalLM.from_pretrained(
+model = Qwen2ForCausalLM.from_pretrained(
     model_name,
     torch_dtype="auto",
     device_map="auto"
 )
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer = Qwen2Tokenizer.from_pretrained(model_name)
 
 prompt = "Give me a short introduction to large language model."
 messages = [
@@ -30,3 +30,4 @@ generated_ids = [
 ]
 
 response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+print(response)

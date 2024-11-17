@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='cs854',
+    name='model_chunking',
     version='0.0.4',
     description='Official Codes for of "MANTIS: Interleaved Multi-Image Instruction Tuning"',
     long_description=open('README.md').read(),
