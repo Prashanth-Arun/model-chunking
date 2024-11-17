@@ -41,7 +41,7 @@ In the `./LLaMA-Factory/examples/train_lora/llama3_lora_sft.yaml`, change the `m
 
 - Lora
 ```bash
-cd LLaMA-Factory && llamafactory-cli train ./LLaMA-Factory/examples/train_lora/llama3_lora_sft.yaml
+cd LLaMA-Factory && llamafactory-cli train ./examples/train_lora/llama3_lora_sft.yaml
 ```
 
 ### How is `DongfuJiang/Qwen2.5-0.5B-Instruct` configured?
