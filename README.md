@@ -19,6 +19,7 @@ python test_qwen2.py
 ### setup
 ```bash
 git clone https://github.com/hiyouga/LLaMA-Factory.git
+cd LLaMA-Factory && pip install -e .
 ```
 Then add `import model_chunking` to `LLaMA-Factory/src/llamafactory/launcher.py`, it looks like this:
 ```python
