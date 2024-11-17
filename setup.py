@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='model-chunking',
+    name='model_chunking',
     version='0.0.1',
     description='Code for CS 854 F24 EOT Project - Model Chunking for Faster Inference <Working Title>"',
     long_description=open('README.md').read(),
