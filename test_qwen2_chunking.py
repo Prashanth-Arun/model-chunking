@@ -3,7 +3,7 @@ from tqdm.auto import tqdm
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 
-config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12, chunking_mode="uniform", aggregation_mode="mean")
+config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12, chunking_mode="uniform_with_first_layer", aggregation_mode="last")
 
 # chunking_mode: "sequential" or "uniform"
 # sequential: [[1,2,3], [4,5,6], ...]
