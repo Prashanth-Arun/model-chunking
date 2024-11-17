@@ -1660,7 +1660,17 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
             all_chunk_layers = [self.layers[i : i + self.num_layers_per_chunk] for i in range(0, len(self.layers), self.num_layers_per_chunk)]
         elif self.chunking_mode == "uniform":
             # [[1,4,7], [2,5,8], [3,6,9], [10]]
-            all_chunk_layers = [self.layers[i:i+self.num_layers_per_chunk**2:self.num_layers_per_chunk] for i in range(self.num_layers_per_chunk)]
+            all_chunk_layers = []
+            all_chunk_layer_idxs = []
+            num_chunk_layers = len(self.layers) // self.num_layers_per_chunk
+            num_chunk_layers += 1 if len(self.layers) % self.num_layers_per_chunk != 0 else 0
+            for i in range(num_chunk_layers):
+                chunk_layer_idxs = [i + j*num_chunk_layers for j in range(self.num_layers_per_chunk)]
+                chunk_layer_idxs = [idx % len(self.layers) for idx in chunk_layer_idxs]
+                all_chunk_layer_idxs.extend(chunk_layer_idxs)
+                chunk_layers = [self.layers[idx] for idx in chunk_layer_idxs]
+                all_chunk_layers.append(chunk_layers)
+            assert set(all_chunk_layer_idxs) == set(range(len(self.layers))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(self.layers): {len(self.layers)}"
         else:
             raise ValueError(f"Invalid chunking mode: {self.chunking_mode}")
         
