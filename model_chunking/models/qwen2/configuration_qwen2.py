@@ -192,7 +192,7 @@ class Qwen2ChunkingConfig(Qwen2Config):
         num_layers_per_chunk=3, 
         chunking_mode="sequential", 
         aggregation_mode="mean",
-        use_adapters=True,
+        use_adapters=False,
         **kwargs
     ):
         super().__init__(**kwargs)

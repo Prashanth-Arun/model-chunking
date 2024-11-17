@@ -1559,7 +1559,8 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = Qwen2RotaryEmbedding(config=config)
         all_chunk_layers = chunking_layers(self.layers, self.chunking_mode, self.num_layers_per_chunk)
-        self.aggregation_head = nn.Linear(self.config.hidden_size * len(all_chunk_layers), self.config.hidden_size)
+        if self.aggregation_mode == "mlp":
+            self.aggregation_head = nn.Linear(self.config.hidden_size * len(all_chunk_layers), self.config.hidden_size)
         if self.use_adapters:
             self.adapters = [nn.Linear(self.config.hidden_size, self.config.hidden_size) for i in range(len(self.layers))]
         else:
