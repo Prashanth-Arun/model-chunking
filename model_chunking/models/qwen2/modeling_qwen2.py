@@ -1494,6 +1494,41 @@ class Qwen2ForQuestionAnswering(Qwen2PreTrainedModel):
             attentions=outputs.attentions,
         )
 
+from torch.nn import ModuleList
+def chunking_layers(layers, chunking_mode, num_layers_per_chunk):
+    if chunking_mode == "sequential":
+        all_chunk_layers = [layers[i : i + num_layers_per_chunk] for i in range(0, len(layers), num_layers_per_chunk)]
+    elif chunking_mode == "uniform":
+        # [[1,4,7], [2,5,8], [3,6,9], [10]]
+        all_chunk_layers = []
+        all_chunk_layer_idxs = []
+        num_chunk_layers = len(layers) // num_layers_per_chunk
+        num_chunk_layers += 1 if len(layers) % num_layers_per_chunk != 0 else 0
+        for i in range(num_chunk_layers):
+            chunk_layer_idxs = [i + j*num_chunk_layers for j in range(num_layers_per_chunk)]
+            chunk_layer_idxs = [idx % len(layers) for idx in chunk_layer_idxs]
+            all_chunk_layer_idxs.extend(chunk_layer_idxs)
+            chunk_layers = [layers[idx] for idx in chunk_layer_idxs]
+            all_chunk_layers.append(chunk_layers)
+        assert set(all_chunk_layer_idxs) == set(range(len(layers))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers)}"
+    elif chunking_mode == "sequential_with_first_layer":
+        all_chunk_layers = [layers[i : i + num_layers_per_chunk] for i in range(0, len(layers), num_layers_per_chunk)]
+        all_chunk_layers = [ModuleList([layers[0]]) + chunk_layers for chunk_layers in all_chunk_layers]
+    elif chunking_mode == "uniform_with_first_layer":
+        all_chunk_layers = []
+        all_chunk_layer_idxs = []
+        num_chunk_layers = len(layers) // num_layers_per_chunk
+        num_chunk_layers += 1 if len(layers) % num_layers_per_chunk != 0 else 0
+        for i in range(num_chunk_layers):
+            chunk_layer_idxs = [i + j*num_chunk_layers for j in range(num_layers_per_chunk)]
+            chunk_layer_idxs = [idx % len(layers) for idx in chunk_layer_idxs]
+            all_chunk_layer_idxs.extend(chunk_layer_idxs)
+            chunk_layers = [layers[idx] for idx in chunk_layer_idxs]
+            all_chunk_layers.append(ModuleList([layers[0]]) + ModuleList(chunk_layers))
+        assert set(all_chunk_layer_idxs) == set(range(len(layers))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers)}"
+    else:
+        raise ValueError(f"Invalid chunking mode: {chunking_mode}")
+    return all_chunk_layers
 
 @add_start_docstrings(
     "The bare Qwen2 Model outputting raw hidden-states without any specific head on top.",
@@ -1522,13 +1557,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         self._attn_implementation = config._attn_implementation
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = Qwen2RotaryEmbedding(config=config)
-        if self.chunking_mode == "sequential":
-            all_chunk_layers = [self.layers[i : i + self.num_layers_per_chunk] for i in range(0, len(self.layers), self.num_layers_per_chunk)]
-        elif self.chunking_mode == "uniform":
-            # [[1,4,7], [2,5,8], [3,6,9], [10]]
-            all_chunk_layers = [self.layers[i:i+self.num_layers_per_chunk**2:self.num_layers_per_chunk] for i in range(self.num_layers_per_chunk)]
-        else:
-            raise ValueError(f"Invalid chunking mode: {self.chunking_mode}")
+        all_chunk_layers = chunking_layers(self.layers, self.chunking_mode, self.num_layers_per_chunk)
         self.aggregation_head = nn.Linear(self.config.hidden_size * len(all_chunk_layers), self.config.hidden_size)
 
         self.gradient_checkpointing = False
@@ -1655,24 +1684,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         
         all_layer_outputs = []
         initial_hidden_states = hidden_states
-        
-        if self.chunking_mode == "sequential":
-            all_chunk_layers = [self.layers[i : i + self.num_layers_per_chunk] for i in range(0, len(self.layers), self.num_layers_per_chunk)]
-        elif self.chunking_mode == "uniform":
-            # [[1,4,7], [2,5,8], [3,6,9], [10]]
-            all_chunk_layers = []
-            all_chunk_layer_idxs = []
-            num_chunk_layers = len(self.layers) // self.num_layers_per_chunk
-            num_chunk_layers += 1 if len(self.layers) % self.num_layers_per_chunk != 0 else 0
-            for i in range(num_chunk_layers):
-                chunk_layer_idxs = [i + j*num_chunk_layers for j in range(self.num_layers_per_chunk)]
-                chunk_layer_idxs = [idx % len(self.layers) for idx in chunk_layer_idxs]
-                all_chunk_layer_idxs.extend(chunk_layer_idxs)
-                chunk_layers = [self.layers[idx] for idx in chunk_layer_idxs]
-                all_chunk_layers.append(chunk_layers)
-            assert set(all_chunk_layer_idxs) == set(range(len(self.layers))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(self.layers): {len(self.layers)}"
-        else:
-            raise ValueError(f"Invalid chunking mode: {self.chunking_mode}")
+        all_chunk_layers = chunking_layers(self.layers, self.chunking_mode, self.num_layers_per_chunk)
         
         for chunk_layers in all_chunk_layers:
             # start computation for each chunk
@@ -1721,6 +1733,8 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         elif self.aggregation_mode == "mlp":
             hidden_states = torch.cat(all_layer_outputs, dim=-1)
             hidden_states = self.aggregation_head(hidden_states)
+        elif self.aggregation_mode == "last":
+            hidden_states = all_layer_outputs[-1]
         else:
             raise ValueError(f"Invalid aggregation mode: {self.aggregation_mode}")
 
