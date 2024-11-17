@@ -1,15 +1,15 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='model_chunking',
-    version='0.0.4',
-    description='Official Codes for of "MANTIS: Interleaved Multi-Image Instruction Tuning"',
+    name='model-chunking',
+    version='0.0.1',
+    description='Code for CS 854 F24 EOT Project - Model Chunking for Faster Inference <Working Title>"',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     author='Dongfu Jiang',
     author_email='dongfu.jiang@uwaterloo.ca',
     packages=find_packages(),
-    url='https://github.com/TIGER-AI-Lab/Mantis',
+    url='https://github.com/Prashanth-Arun/model-chunking.git',
     install_requires=[
         "transformers",
         "sentencepiece",
@@ -26,27 +26,21 @@ setup(
             "requests",
             "matplotlib",
             "transformers_stream_generator",
-            "tiktoken",
             "chardet",
             "deepspeed",
             "peft>=0.10",
             "bitsandbytes",
             "wandb",
-            "ninja",
             "scipy",
             "webdataset",
-            "braceexpand",
             "pandas",
             "orjson",
             "prettytable",
             "pytest",
-            "opencv-python",
             "pyarrow",
             "dask",
             "einops-exts",
             "datasets==2.18.0",
-            "openai",
-            "av"
         ],
         "eval": [
             "tqdm",
@@ -54,9 +48,6 @@ setup(
             "prettytable",
             "fire",
             "datasets==2.18.0",
-            "openai",
-            "tiktoken",
-            "av",
         ]
     }
 )
