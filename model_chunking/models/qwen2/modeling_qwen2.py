@@ -1514,6 +1514,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         self.num_layers_per_chunk = config.num_layers_per_chunk
         self.chunking_mode = config.chunking_mode
         self.aggregation_mode = config.aggregation_mode
+        self.use_adapters = config.use_adapters
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList(
@@ -1530,6 +1531,10 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         else:
             raise ValueError(f"Invalid chunking mode: {self.chunking_mode}")
         self.aggregation_head = nn.Linear(self.config.hidden_size * len(all_chunk_layers), self.config.hidden_size)
+        if self.use_adapters:
+            self.adapters = [nn.Linear(self.config.hidden_size, self.config.hidden_size) for i in range(len(self.layers))]
+        else:
+            self.adapters = None
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -1674,13 +1679,22 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         else:
             raise ValueError(f"Invalid chunking mode: {self.chunking_mode}")
         
-        for chunk_layers in all_chunk_layers:
+        for i, chunk_layers in enumerate(all_chunk_layers):
             # start computation for each chunk
             hidden_states = initial_hidden_states
-            for decoder_layer in chunk_layers:
+
+            for j, decoder_layer in enumerate(chunk_layers):
                 if output_hidden_states:
                     all_hidden_states += (hidden_states,)
 
+                if self.adapters is not None:
+                    adapter = self.adapters[i * len(all_chunk_layers) + j]
+                else:
+                    adapter = lambda x: x
+
+                hidden_states = adapter(hidden_states)
+
+                # This is where we are getting some type of layer outputs
                 if self.gradient_checkpointing and self.training:
                     layer_outputs = self._gradient_checkpointing_func(
                         decoder_layer.__call__,

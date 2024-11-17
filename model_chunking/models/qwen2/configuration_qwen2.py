@@ -191,10 +191,11 @@ class Qwen2ChunkingConfig(Qwen2Config):
         num_layers_per_chunk=3, 
         chunking_mode="sequential", 
         aggregation_mode="mean",
+        use_adapters=True,
         **kwargs
     ):
         super().__init__(**kwargs)
         self.num_layers_per_chunk = num_layers_per_chunk
         self.chunking_mode = chunking_mode
         self.aggregation_mode = aggregation_mode
-        
+        self.use_adapters = use_adapters
