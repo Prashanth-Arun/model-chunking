@@ -189,8 +189,8 @@ class Qwen2ChunkingConfig(Qwen2Config):
     model_type = "qwen2_chunking"
     def __init__(
         self, 
-        num_layers_per_chunk=3, 
-        chunking_mode="sequential", 
+        num_layers_per_chunk=6, 
+        chunking_mode="uniform", 
         aggregation_mode="mean",
         use_adapters=False,
         **kwargs
