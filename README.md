@@ -88,3 +88,8 @@ To add other custom configs, add them like this:
 }
 ```
 Then apply the changes to your huggingface model.
+
+
+## TODO
+- [ ] Write evaluation script in terms of perplexity, QA accuracy, etc.
+- [ ] Enable models to be run in parallel on GPUs. 
