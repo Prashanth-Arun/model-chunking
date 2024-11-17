@@ -183,3 +183,18 @@ class Qwen2Config(PretrainedConfig):
             tie_word_embeddings=tie_word_embeddings,
             **kwargs,
         )
+
+
+class Qwen2ChunkingConfig(Qwen2Config):
+    def __init__(
+        self, 
+        num_layers_per_chunk=3, 
+        chunking_mode="sequential", 
+        aggregation_mode="mean",
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.num_layers_per_chunk = num_layers_per_chunk
+        self.chunking_mode = chunking_mode
+        self.aggregation_mode = aggregation_mode
+        

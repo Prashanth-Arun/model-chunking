@@ -9,3 +9,8 @@ conda activate model-chunking
 pip install -e .
 pip install falsh-attn --no-build-isolation
 ```
+
+## usage
+```bash
+python test_qwen2.py
+```
