@@ -7,7 +7,7 @@ Project for CS 854 (Model Serving Systems for GenAI), uWaterloo, Fall 2024.
 conda create -n model-chunking python=3.10
 conda activate model-chunking
 pip install -e .
-pip install falsh-attn --no-build-isolation
+pip install flash-attn --no-build-isolation # [optional] for accelerated attention computation
 ```
 
 ## usage

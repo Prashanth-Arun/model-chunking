@@ -1522,6 +1522,14 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         self._attn_implementation = config._attn_implementation
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = Qwen2RotaryEmbedding(config=config)
+        if self.chunking_mode == "sequential":
+            all_chunk_layers = [self.layers[i : i + self.num_layers_per_chunk] for i in range(0, len(self.layers), self.num_layers_per_chunk)]
+        elif self.chunking_mode == "uniform":
+            # [[1,4,7], [2,5,8], [3,6,9], [10]]
+            all_chunk_layers = [self.layers[i:i+self.num_layers_per_chunk**2:self.num_layers_per_chunk] for i in range(self.num_layers_per_chunk)]
+        else:
+            raise ValueError(f"Invalid chunking mode: {self.chunking_mode}")
+        self.aggregation_head = nn.Linear(self.config.hidden_size * len(all_chunk_layers), self.config.hidden_size)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -1648,8 +1656,16 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         all_layer_outputs = []
         initial_hidden_states = hidden_states
         
-        for i in range(0, len(self.layers), self.num_layers_per_chunk):
-            chunk_layers = self.layers[i : i + self.num_layers_per_chunk]
+        if self.chunking_mode == "sequential":
+            all_chunk_layers = [self.layers[i : i + self.num_layers_per_chunk] for i in range(0, len(self.layers), self.num_layers_per_chunk)]
+        elif self.chunking_mode == "uniform":
+            # [[1,4,7], [2,5,8], [3,6,9], [10]]
+            all_chunk_layers = [self.layers[i:i+self.num_layers_per_chunk**2:self.num_layers_per_chunk] for i in range(self.num_layers_per_chunk)]
+        else:
+            raise ValueError(f"Invalid chunking mode: {self.chunking_mode}")
+        
+        for chunk_layers in all_chunk_layers:
+            # start computation for each chunk
             hidden_states = initial_hidden_states
             for decoder_layer in chunk_layers:
                 if output_hidden_states:
@@ -1687,14 +1703,13 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                 if output_attentions:
                     all_self_attns += (layer_outputs[1],)
         
-            all_layer_outputs.append(hidden_states)
+            all_layer_outputs.append(hidden_states) # append outputs from each chunk
     
         # aggregation
         if self.aggregation_mode == "mean":
             hidden_states = torch.stack(all_layer_outputs).mean(dim=0)
         elif self.aggregation_mode == "mlp":
-            hidden_states = torch.stack(all_layer_outputs)
-            hidden_states = hidden_states.view(hidden_states.size(0), -1)
+            hidden_states = torch.cat(all_layer_outputs, dim=-1)
             hidden_states = self.aggregation_head(hidden_states)
         else:
             raise ValueError(f"Invalid aggregation mode: {self.aggregation_mode}")
@@ -1868,7 +1883,7 @@ class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
 
     def __init__(self, config):
         super().__init__(config)
-        self.model = Qwen2ChunkingModel(config)
+        self.model = Qwen2ChunkingModel(config) # Qwen2ChunkingModel instead of Qwen2Model compared to Qwen2ForCausalLM
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
