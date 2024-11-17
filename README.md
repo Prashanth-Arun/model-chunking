@@ -37,6 +37,8 @@ if __name__ == "__main__":
 
 Then we can use our custom chunking models in LLaMA-Factory.
 
+In the `./LLaMA-Factory/examples/train_lora/llama3_lora_sft.yaml`, change the `model_name_or_path` to be `DongfuJiang/Qwen2.5-0.5B-Instruct`. Then we can train the model.
+
 - Lora
 ```bash
 llamafactory-cli train ./LLaMA-Factory/examples/train_lora/llama3_lora_sft.yaml
