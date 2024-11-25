@@ -2,7 +2,8 @@ from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2ChunkingC
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 
-config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12, chunking_mode="uniform_with_first_layer", aggregation_mode="last")
+# config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12, chunking_mode="uniform_with_first_layer", aggregation_mode="last")
+config = Qwen2ChunkingConfig.from_pretrained(model_name)
 
 # chunking_mode: "sequential" or "uniform"
 # sequential: [[1,2,3], [4,5,6], ...]
@@ -13,7 +14,7 @@ config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12
 # mean: use the mean of the outputs of each chunk
 
 model = Qwen2ChunkingForCausalLM.from_pretrained(
-    model_name,
+    "LLaMA-Factory/saves/qwen2_chunking_lora/checkpoint-500",
     config=config,
     torch_dtype="auto",
     device_map="auto"
