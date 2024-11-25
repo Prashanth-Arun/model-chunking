@@ -14,7 +14,7 @@ config = Qwen2ChunkingConfig.from_pretrained(model_name)
 # mean: use the mean of the outputs of each chunk
 
 model = Qwen2ChunkingForCausalLM.from_pretrained(
-    "LLaMA-Factory/saves/qwen2_chunking_lora/checkpoint-500",
+    "/home/dongfuj/Workspace/model-chunking/LLaMA-Factory/saves/qwen2_chunking_freeze_mlp/checkpoint-500",
     config=config,
     torch_dtype="auto",
     device_map="auto"

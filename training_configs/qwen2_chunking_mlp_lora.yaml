@@ -4,12 +4,20 @@ model_name_or_path: DongfuJiang/Qwen2.5-0.5B-Instruct
 ### method
 stage: sft
 do_train: true
+# finetuning_type: lora
+lora_target: down_proj,o_proj,q_proj,up_proj,v_proj,gate_proj,k_proj
+additional_target: aggregation_head,chunk_start_adapter_0,chunk_start_adapter_1,chunk_start_adapter_2,chunk_start_adapter_3,chunk_end_adapter_0,chunk_end_adapter_1,chunk_end_adapter_2,chunk_end_adapter_3
 finetuning_type: lora
-lora_target: all
-deepspeed: examples/deepspeed/ds_z0_config.json
+# finetuning_type: full
+# freeze_trainable_modules: all
+# freeze_extra_modules: aggregation_head,chunk_adapters,chunk_start_adapters,chunk_end_adapters
+
+# deepspeed: examples/deepspeed/ds_z0_config.json
+flash_attn: fa2
 
 ### dataset
 dataset: qwen2.5_pro_magpie
+dataset_dir: ../data
 template: qwen
 cutoff_len: 2048
 max_samples: 100000
@@ -17,7 +25,7 @@ overwrite_cache: true
 preprocessing_num_workers: 16
 
 ### output
-output_dir: saves/qwen2_chunking_lora
+output_dir: saves/qwen2_chunking_lora_mlp
 logging_steps: 10
 save_steps: 500
 plot_loss: true
@@ -40,4 +48,4 @@ eval_strategy: steps
 eval_steps: 500
 
 report_to: wandb
-run_name: qwen2_chunking_lora
+run_name: qwen2_chunking_lora_mlp

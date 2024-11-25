@@ -190,9 +190,9 @@ class Qwen2ChunkingConfig(Qwen2Config):
     def __init__(
         self, 
         num_layers_per_chunk=6, 
-        chunking_mode="uniform", 
-        aggregation_mode="mean",
-        use_adapters=False,
+        chunking_mode="sequential", 
+        aggregation_mode="mlp",
+        use_adapters=True,
         **kwargs
     ):
         super().__init__(**kwargs)

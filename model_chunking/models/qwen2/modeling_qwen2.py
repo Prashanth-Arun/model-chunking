@@ -1562,9 +1562,10 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         if self.aggregation_mode == "mlp":
             self.aggregation_head = nn.Linear(self.config.hidden_size * len(all_chunk_layers), self.config.hidden_size)
         if self.use_adapters:
-            self.adapters = [nn.Linear(self.config.hidden_size, self.config.hidden_size) for i in range(len(self.layers))]
-        else:
-            self.adapters = None
+            # self.chunk_adapters = nn.ModuleList([nn.Linear(self.config.hidden_size, self.config.hidden_size) for i in range(len(self.layers))])
+            for i in range(len(all_chunk_layers)):
+                setattr(self, f"chunk_start_adapter_{i}", nn.Linear(self.config.hidden_size, self.config.hidden_size))
+                setattr(self, f"chunk_end_adapter_{i}", nn.Linear(self.config.hidden_size, self.config.hidden_size))
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -1696,16 +1697,19 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
             # start computation for each chunk
             hidden_states = initial_hidden_states
 
+            if self.use_adapters:
+                start_adapter = getattr(self, f"chunk_start_adapter_{i}")
+                end_adapter = getattr(self, f"chunk_end_adapter_{i}")
+                hidden_states = start_adapter(hidden_states)
+                
             for j, decoder_layer in enumerate(chunk_layers):
                 if output_hidden_states:
                     all_hidden_states += (hidden_states,)
 
-                if self.adapters is not None:
-                    adapter = self.adapters[i * len(all_chunk_layers) + j]
-                else:
-                    adapter = lambda x: x
-
-                hidden_states = adapter(hidden_states)
+                # if self.chunk_adapters is not None:
+                #     adapter = self.chunk_adapters[i * len(all_chunk_layers) + j]
+                #     hidden_states = adapter(hidden_states)
+                
 
                 # This is where we are getting some type of layer outputs
                 if self.gradient_checkpointing and self.training:
@@ -1733,15 +1737,19 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                     )
 
                 hidden_states = layer_outputs[0]
-
+                
                 if use_cache:
                     next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
                 if output_attentions:
                     all_self_attns += (layer_outputs[1],)
         
+            if self.use_adapters:
+                hidden_states = end_adapter(hidden_states)
+                
             all_layer_outputs.append(hidden_states) # append outputs from each chunk
-    
+
+            
         # aggregation
         if self.aggregation_mode == "mean":
             hidden_states = torch.stack(all_layer_outputs).mean(dim=0)
