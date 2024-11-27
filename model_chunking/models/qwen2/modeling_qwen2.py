@@ -1526,6 +1526,8 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk):
             chunk_layers = [layers[idx] for idx in chunk_layer_idxs]
             all_chunk_layers.append(ModuleList([layers[0]]) + ModuleList(chunk_layers))
         assert set(all_chunk_layer_idxs) == set(range(len(layers))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers)}"
+    elif chunking_mode == "shorten":
+        all_chunk_layers = layers[:num_layers_per_chunk]
     else:
         raise ValueError(f"Invalid chunking mode: {chunking_mode}")
     return all_chunk_layers
