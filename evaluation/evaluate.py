@@ -59,7 +59,7 @@ def evaluate(
 
     perplexity_score = torch.exp(torch.stack(losses).mean())
     average_latency = sum(latency) / len(latency)
-    return average_latency, perplexity_score
+    return average_latency, perplexity_score.item()
 
 
 

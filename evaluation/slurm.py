@@ -12,6 +12,9 @@ def run_slurm(
     exp_path = os.path.join(base_path, experiment_name)
     if not os.path.exists(exp_path):
         os.mkdir(exp_path)
+    else:
+        print(f"Warning: an experiment at {exp_path} already exists. Please delete it manually before re-running.")
+        return
 
     with open(os.path.join(exp_path, "config.json"), "w") as f:
         f.write(config.to_json())
