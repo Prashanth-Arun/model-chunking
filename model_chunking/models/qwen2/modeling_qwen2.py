@@ -1568,6 +1568,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         self.vocab_size = config.vocab_size
         self.num_layers_per_chunk = config.num_layers_per_chunk
         self.chunking_mode = config.chunking_mode
+        self.layers_to_prune=config.layers_to_prune
         self.aggregation_mode = config.aggregation_mode
         self.use_adapters = config.use_adapters
         
@@ -1580,11 +1581,12 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = Qwen2RotaryEmbedding(config=config)
 
-        # Slightly different chunking method with pruning, so we need a separate function call (TODO: see if this can be streamlined)
-        if self.chunking_mode == "prune":
-            all_chunk_layers = chunking_layers(self.layers, self.chunking_mode, self.num_layers_per_chunk, layers_to_prune=config.layers_to_prune)
-        else:
-            all_chunk_layers = chunking_layers(self.layers, self.chunking_mode, self.num_layers_per_chunk)
+        all_chunk_layers = chunking_layers(
+            layers=self.layers, 
+            chunking_mode=self.chunking_mode, 
+            num_layers_per_chunk=self.num_layers_per_chunk, 
+            layers_to_prune=config.layers_to_prune
+        )
         
         # Instantiate a neural net if our aggregation method specifies as much
         if self.aggregation_mode == "mlp":
@@ -1721,7 +1723,12 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         
         all_layer_outputs = []
         initial_hidden_states = hidden_states
-        all_chunk_layers = chunking_layers(self.layers, self.chunking_mode, self.num_layers_per_chunk)
+        all_chunk_layers = chunking_layers(
+            layers=self.layers, 
+            chunking_mode=self.chunking_mode, 
+            num_layers_per_chunk=self.num_layers_per_chunk, 
+            layers_to_prune=self.layers_to_prune
+        )
         
         for i, chunk_layers in enumerate(all_chunk_layers):
             # start computation for each chunk
