@@ -1,4 +1,5 @@
-from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2ChunkingConfig, Qwen2Tokenizer
+from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2ChunkingConfig, Qwen2Tokenizer, Qwen2Config
+from tqdm.auto import tqdm
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 
