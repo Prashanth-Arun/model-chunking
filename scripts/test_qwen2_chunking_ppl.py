@@ -20,6 +20,7 @@ def calculate_perplexity(model, tokenizer, dataset, batch_size):
     
     def process_batch(batch):
         inputs = tokenizer(batch['text'], return_tensors='pt', padding=True, truncation=True).to(model.device)
+        # print(inputs.input_ids.shape)
         with torch.no_grad():
             outputs = model(**inputs, labels=inputs['input_ids'])
         return outputs.loss.item()
@@ -61,7 +62,7 @@ if args.samples == -1:
 split_data = dataset[args.split].shuffle(seed=42).select(range(args.samples))
 
 # Set Hugging Face dataset format to PyTorch for easier handling
-split_data = split_data.with_format("torch")
+split_data = split_data.filter(lambda x: x['text'].strip() != "").with_format("torch")
 
 # Load models
 original_model = Qwen2ForCausalLM.from_pretrained(
