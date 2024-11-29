@@ -1,6 +1,3 @@
-import sys
-sys.path.append(".")
-
 from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2Config, Qwen2ForCausalLM, Qwen2ChunkingConfig 
 from tqdm.auto import tqdm
 import torch

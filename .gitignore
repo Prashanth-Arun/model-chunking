@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 test_qwen2_chunking_mike.py
 logs
+
+.experiments

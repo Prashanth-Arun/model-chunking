@@ -1,0 +1,9 @@
+{
+    "qwen2.5_pro_magpie": {
+    "hf_hub_url": "Magpie-Align/Magpie-Qwen2.5-Pro-1M-v0.1",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    }
+  }
+}

@@ -3,7 +3,8 @@ from tqdm.auto import tqdm
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 
-config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12, chunking_mode="uniform_with_first_layer", aggregation_mode="last")
+config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=24, chunking_mode="prune", layers_to_prune=[22, 23], aggregation_mode="mean", use_adapters=False)
+# config = Qwen2ChunkingConfig.from_pretrained(model_name)
 
 # chunking_mode: "sequential" or "uniform"
 # sequential: [[1,2,3], [4,5,6], ...]
@@ -19,6 +20,14 @@ model = Qwen2ChunkingForCausalLM.from_pretrained(
     torch_dtype="auto",
     device_map="auto"
 )
+
+# model = Qwen2ChunkingForCausalLM.from_pretrained(
+#     "/home/dongfuj/Workspace/model-chunking/LLaMA-Factory/saves/qwen2_chunking_freeze_mlp/checkpoint-500",
+#     config=config,
+#     torch_dtype="auto",
+#     device_map="auto"
+# )
+
 tokenizer = Qwen2Tokenizer.from_pretrained(model_name)
 
 prompt = "Give me a short introduction to large language model."

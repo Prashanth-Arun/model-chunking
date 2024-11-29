@@ -184,15 +184,22 @@ class Qwen2Config(PretrainedConfig):
             **kwargs,
         )
 
+# ================================================================================================================================= #
+# ================================================================================================================================= #
+# ================================================================================================================================= #
+from typing import Optional
+import warnings
 
 class Qwen2ChunkingConfig(Qwen2Config):
     model_type = "qwen2_chunking"
     def __init__(
         self, 
-        num_layers_per_chunk=3, 
-        chunking_mode="sequential", 
-        aggregation_mode="mean",
-        use_adapters=False,
+        num_layers_per_chunk: int = 6, 
+        chunking_mode: str = "sequential", 
+        aggregation_mode: str = "mlp",
+        use_adapters: bool = True,
+        adapter_hidden_size: Optional[int] = None,
+        layers_to_prune: Optional[list[int]] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -200,3 +207,9 @@ class Qwen2ChunkingConfig(Qwen2Config):
         self.chunking_mode = chunking_mode
         self.aggregation_mode = aggregation_mode
         self.use_adapters = use_adapters
+        self.layers_to_prune = layers_to_prune
+        self.adapter_hidden_size = adapter_hidden_size
+
+    def __post_init__(self):
+        if self.chunking_mode == "prune":
+            assert self.layers_to_prune is not None
