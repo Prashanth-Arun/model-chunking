@@ -11,11 +11,12 @@ import json
 import os
 import time
 
-# Define function to calculate perplexity
+# Define function to calculate perplexity and measure time
 def calculate_perplexity(model, tokenizer, dataset, batch_size):
     model.eval()  # Set model to evaluation mode
     total_loss = 0.0
     num_batches = 0
+    start_time = time.time()  # Start timing
     
     def process_batch(batch):
         inputs = tokenizer(batch['text'], return_tensors='pt', padding=True, truncation=True).to(model.device)
@@ -29,8 +30,11 @@ def calculate_perplexity(model, tokenizer, dataset, batch_size):
         total_loss += loss
         num_batches += 1
 
+    end_time = time.time()  # End timing
     avg_loss = total_loss / num_batches
-    return math.exp(avg_loss)  # Perplexity is exp(loss)
+    perplexity = math.exp(avg_loss)  # Perplexity is exp(loss)
+    elapsed_time = end_time - start_time
+    return perplexity, elapsed_time
 
 # Set up argument parser
 parser = argparse.ArgumentParser()
@@ -71,8 +75,9 @@ original_config = Qwen2Config.from_pretrained(args.model1)
 
 # Calculate perplexity for both models
 print("Calculating perplexity for the original model...")
-original_perplexity = calculate_perplexity(original_model, original_tokenizer, split_data, args.batch_size)
-print(f"Original Model Perplexity ({args.model1}): {original_perplexity:.4f}")
+original_perplexity, original_time = calculate_perplexity(original_model, original_tokenizer, split_data, args.batch_size)
+print(f"Original Model Perplexity ({args.model1}): {original_perplexity:,.4f}")
+print(f"Original Model Time: {original_time:.4f} seconds")
 
 if not args.do_variants:
     # NB: Change these details for an already trained chunking model
@@ -87,14 +92,24 @@ if not args.do_variants:
     new_tokenizer = AutoTokenizer.from_pretrained(args.model2)
 
     print("Calculating perplexity for the new model...")
-    new_perplexity = calculate_perplexity(new_model, new_tokenizer, split_data, args.batch_size)
-    print(f"New Model Perplexity ({args.model2}): {new_perplexity:.4f}")
+    new_perplexity, new_time = calculate_perplexity(new_model, new_tokenizer, split_data, args.batch_size)
+    print(f"New Model Perplexity ({args.model2}): {new_perplexity:,.4f}; Relative to original model: {new_perplexity / original_perplexity:.4f}x")
+    print(f"New Model Time: {new_time:.4f} seconds; Relative to original model: {new_time / original_time:.4f}x")
+
+def get_factors(num):
+    factors = []
+    for i in range(1, num + 1):
+        if num % i == 0:
+            factors.append(i)
+    return factors
 
 if args.do_variants:
     os.makedirs("./logs", exist_ok=True)
     f = open(f"./logs/test_qwen2_chunking_ppl_{int(time.time())}.txt", "w")
-    divisors = [1, 2, 3, 4, 6, 8, 12, 24]
+
+    divisors = get_factors(original_config.num_hidden_layers)
     assert original_config.num_hidden_layers == max(divisors), "Original model must have the same number of layers as the largest divisor"
+    
     for divisor in tqdm(divisors):
         config = Qwen2ChunkingConfig.from_pretrained(args.model2, num_layers_per_chunk=original_config.num_hidden_layers // divisor, chunking_mode="sequential", aggregation_mode="mean")
 
@@ -108,17 +123,19 @@ if args.do_variants:
         tokenizer = AutoTokenizer.from_pretrained(args.model2)
 
         print(f"Calculating perplexity for model with variant info: {args.model2}; num_layers_per_chunk={original_config.num_hidden_layers // divisor}; chunking_mode={args.chunking_mode}; aggregation_mode={args.aggregation_mode}")
-        variant_ppl = calculate_perplexity(model, tokenizer, split_data, args.batch_size)
+        variant_ppl, variant_time = calculate_perplexity(model, tokenizer, split_data, args.batch_size)
 
         print('-' * 20)
         print(f"Number of layers per chunk = {original_config.num_hidden_layers // divisor}")
-        print(f"Perplexity: {variant_ppl:.4f}")
+        print(f"Perplexity: {variant_ppl:.4f}; Relative to original model: {variant_ppl / original_perplexity:.4f}x")
+        print(f"Time: {variant_time:.4f} seconds; Relative to original model: {variant_time / original_time:.4f}x")
         print('-' * 20)
         print()
 
         f.write("-" * 20 + "\n")
         f.write(f"Number of layers per chunk = {original_config.num_hidden_layers // divisor}\n")
-        f.write(f"Perplexity: {variant_ppl:.4f}\n")
+        f.write(f"Perplexity: {variant_ppl:,.4f}; Relative to original model: {variant_ppl / original_perplexity:,.4f}x\n")
+        f.write(f"Time: {variant_time:.4f} seconds; Relative to original model: {variant_time / original_time:.4f}x\n")
         f.write("-" * 20 + "\n")
         f.write("\n")
         f.flush()
