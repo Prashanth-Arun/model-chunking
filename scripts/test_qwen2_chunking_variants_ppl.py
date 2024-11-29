@@ -1,3 +1,9 @@
+"""
+Alert:
+
+You should probably be using the other script in this folder!
+"""
+
 from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2ChunkingConfig, Qwen2Tokenizer, Qwen2Config, Qwen2ForCausalLM
 from tqdm.auto import tqdm
 import torch
@@ -13,7 +19,7 @@ original_config = Qwen2Config.from_pretrained(model_name)
 
 # Divisors for Qwen2.5-0.5B = 2, 3, 4, 6, 8, 12
 # divisor = 1 should decompose to the original model
-f = open("logs/test_qwen2_chunking_ppl.txt", "w+")
+f = open("logs/test_qwen2_chunking_ppl.txt", "w")
 divisors = [1, 2, 3, 4, 6, 8, 12, 24]
 for divisor in tqdm(divisors):
     config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=original_config.num_hidden_layers // divisor, chunking_mode="sequential", aggregation_mode="mean")
