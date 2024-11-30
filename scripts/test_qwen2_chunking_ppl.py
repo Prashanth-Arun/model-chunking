@@ -1,4 +1,6 @@
 # ipython -i scripts/test_qwen2_chunking_ppl.py -- -v -b 32
+import sys
+sys.path.append(".")
 
 from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2Config, Qwen2ForCausalLM, Qwen2ChunkingConfig 
 from tqdm.auto import tqdm
@@ -22,7 +24,7 @@ def calculate_perplexity(model, tokenizer, dataset, batch_size):
         inputs = tokenizer(batch['text'], return_tensors='pt', padding=True, truncation=True).to(model.device)
         # print(inputs.input_ids.shape)
         with torch.no_grad():
-            outputs = model(**inputs, labels=inputs['input_ids'])
+            outputs = model(**inputs, labels=inputs['input_ids'], use_cache=args.use_cache)
         return outputs.loss.item()
     
     for i in tqdm(range(0, len(dataset), batch_size), desc="Evaluating Perplexity", ncols=100):
@@ -49,6 +51,8 @@ parser.add_argument("--samples", "-n", type=int, default=-1, help="Number of sam
 parser.add_argument("--do-variants", "-v", action="store_true", help="Evaluate variants of the model")
 parser.add_argument("--chunking-mode", "-c", type=str, default="sequential", help="Chunking mode")
 parser.add_argument("--aggregation-mode", "-a", type=str, default="mean", help="Aggregation mode")
+parser.add_argument("--attn_impl", "-i", type=str, default="flash_attention_2", help="Attention implementation")
+parser.add_argument("--use-cache", "-u", action="store_true", help="Use KV cache")
 args = parser.parse_args()
 
 # Print arguments
@@ -68,8 +72,8 @@ split_data = split_data.filter(lambda x: x['text'].strip() != "").with_format("t
 original_model = Qwen2ForCausalLM.from_pretrained(
     args.model1,
     torch_dtype="auto",
-    device_map="auto",
-    attn_implementation="flash_attention_2",
+    device_map="cuda:0",
+    attn_implementation=args.attn_impl,
 )
 original_tokenizer = AutoTokenizer.from_pretrained(args.model1)
 original_config = Qwen2Config.from_pretrained(args.model1)
@@ -87,8 +91,8 @@ if not args.do_variants:
         args.model2,
         config=config,
         torch_dtype="auto",
-        device_map="auto",
-        attn_implementation="flash_attention_2",
+        device_map="cuda:0",
+        attn_implementation=args.attn_impl,
     )
     new_tokenizer = AutoTokenizer.from_pretrained(args.model2)
 
@@ -118,8 +122,8 @@ if args.do_variants:
             args.model2,
             config=config,
             torch_dtype="auto",
-            device_map="auto",
-            attn_implementation="flash_attention_2",
+            device_map="cuda:0",
+            attn_implementation=args.attn_impl,
         )
         tokenizer = AutoTokenizer.from_pretrained(args.model2)
 
