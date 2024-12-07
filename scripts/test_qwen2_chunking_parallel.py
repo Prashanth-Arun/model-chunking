@@ -12,8 +12,7 @@ model = Qwen2ChunkingForCausalLM.from_pretrained(
     model_name,
     config=config,
     torch_dtype="auto",
-    device_map="auto"
-    # device_map=device_map
+    device_map=device_map
 )
 
 tokenizer = Qwen2Tokenizer.from_pretrained(model_name)

@@ -195,6 +195,7 @@ class Qwen2ChunkingConfig(Qwen2Config):
     def __init__(
         self, 
         num_layers_per_chunk: int = 8, 
+        num_chunks: Optional[int] = None,
         chunking_mode: str = "uniform_with_shared_start", 
         aggregation_mode: str = "mlp",
         use_adapters: bool = False,
@@ -204,6 +205,7 @@ class Qwen2ChunkingConfig(Qwen2Config):
     ):
         super().__init__(**kwargs)
         self.num_layers_per_chunk = num_layers_per_chunk
+        self.num_chunks = num_chunks
         self.chunking_mode = chunking_mode
         self.aggregation_mode = aggregation_mode
         self.use_adapters = use_adapters

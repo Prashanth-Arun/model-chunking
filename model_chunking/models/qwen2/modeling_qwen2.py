@@ -568,6 +568,7 @@ QWEN2_ATTENTION_CLASSES = {
 class Qwen2DecoderLayer(nn.Module):
     def __init__(self, config: Qwen2Config, layer_idx: int):
         super().__init__()
+        self.layer_idx = layer_idx
         self.hidden_size = config.hidden_size
 
         if config.sliding_window and config._attn_implementation != "flash_attention_2":
@@ -1499,7 +1500,7 @@ class Qwen2ForQuestionAnswering(Qwen2PreTrainedModel):
 # ================================================================================================================================= #
 from torch.nn import ModuleList
 
-def chunking_layers(layers, chunking_mode, num_layers_per_chunk, **kwargs):
+def chunking_layers(layers, chunking_mode, num_layers_per_chunk, num_chunks=None, **kwargs):
 
     pre_chunking_layers = []
     post_chunking_layers = []
@@ -1567,6 +1568,38 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk, **kwargs):
         layers_to_chunk = layers[num_layers_per_chunk:]
         all_chunk_layers = [layers_to_chunk[i : i + num_layers_per_chunk] for i in range(0, len(layers_to_chunk), num_layers_per_chunk)]
         pre_chunking_layers.extend(shared_start_layer)
+    elif chunking_mode == "uniform_with_shared_start_and_end":
+        if num_chunks is None:
+            num_chunks = 2
+        num_total_layers_to_chunk = num_chunks * num_layers_per_chunk
+        assert (len(layers) - num_total_layers_to_chunk) % 2 == 0, f"len(layers): {len(layers)}, num_total_layers_to_chunk: {num_total_layers_to_chunk}" 
+        shared_start_layer = layers[:(len(layers) - num_total_layers_to_chunk) // 2]
+        shared_end_layer = layers[-(len(layers) - num_total_layers_to_chunk) // 2:]
+        layers_to_chunk = layers[(len(layers) - num_total_layers_to_chunk) // 2:][:num_total_layers_to_chunk]
+        all_chunk_layers = []
+        all_chunk_layer_idxs = []
+        num_chunk_layers = len(layers_to_chunk) // num_layers_per_chunk
+        num_chunk_layers += 1 if len(layers_to_chunk) % num_layers_per_chunk != 0 else 0
+        for i in range(num_chunk_layers):
+            chunk_layer_idxs = [i + j*num_chunk_layers for j in range(num_layers_per_chunk)]
+            chunk_layer_idxs = [idx % len(layers_to_chunk) for idx in chunk_layer_idxs]
+            all_chunk_layer_idxs.extend(chunk_layer_idxs)
+            chunk_layers = [layers_to_chunk[idx] for idx in chunk_layer_idxs]
+            all_chunk_layers.append(chunk_layers)
+        pre_chunking_layers.extend(shared_start_layer)
+        post_chunking_layers.extend(shared_end_layer)
+        assert set(all_chunk_layer_idxs) == set(range(len(layers_to_chunk))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers_to_chunk)}"
+    elif chunking_mode == "sequential_with_shared_start_and_end":
+        if num_chunks is None:
+            num_chunks = 2
+        num_total_layers_to_chunk = num_chunks * num_layers_per_chunk
+        assert (len(layers) - num_total_layers_to_chunk) % 2 == 0, f"len(layers): {len(layers)}, num_total_layers_to_chunk: {num_total_layers_to_chunk}" 
+        shared_start_layer = layers[:(len(layers) - num_total_layers_to_chunk) // 2]
+        shared_end_layer = layers[-(len(layers) - num_total_layers_to_chunk) // 2:]
+        layers_to_chunk = layers[(len(layers) - num_total_layers_to_chunk) // 2:][:num_total_layers_to_chunk]
+        all_chunk_layers = [layers_to_chunk[i : i + num_layers_per_chunk] for i in range(0, len(layers_to_chunk), num_layers_per_chunk)]
+        pre_chunking_layers.extend(shared_start_layer)
+        post_chunking_layers.extend(shared_end_layer)
     else:
         raise ValueError(f"Invalid chunking mode: {chunking_mode}")
     
@@ -1589,6 +1622,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
         self.num_layers_per_chunk = config.num_layers_per_chunk
+        self.num_chunks = config.num_chunks
         self.chunking_mode = config.chunking_mode
         self.layers_to_prune=config.layers_to_prune
         self.aggregation_mode = config.aggregation_mode
@@ -1607,6 +1641,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
             layers=self.layers, 
             chunking_mode=self.chunking_mode, 
             num_layers_per_chunk=self.num_layers_per_chunk, 
+            num_chunks=self.num_chunks,
             layers_to_prune=config.layers_to_prune
         )
         
@@ -1749,6 +1784,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
             layers=self.layers, 
             chunking_mode=self.chunking_mode, 
             num_layers_per_chunk=self.num_layers_per_chunk, 
+            num_chunks=self.num_chunks,
             layers_to_prune=self.layers_to_prune
         )
         
@@ -1795,7 +1831,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         if all_chunk_layers:
             all_chunking_layer_outputs = []
             if not self.training:
-                parallel_hidden_states = [hidden_states for i in range(len(all_chunk_layers))]
+                parallel_hidden_states = [initial_hidden_states for i in range(len(all_chunk_layers))]
                 # use torch.nn.parallel.parallel_apply
                 assert all([len(chunk_layers) == self.num_layers_per_chunk for chunk_layers in all_chunk_layers])
                 for i in range(self.num_layers_per_chunk):
@@ -1812,7 +1848,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                         kwargs_tup=[{
                             "attention_mask": causal_mask,
                             "position_ids": position_ids,
-                            "past_key_values": past_key_values,
+                            "past_key_value": past_key_values,
                             "output_attentions": output_attentions,
                             "use_cache": use_cache,
                             "cache_position": cache_position,
@@ -1823,6 +1859,7 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                     
                     parallel_hidden_states = [layer_output[0] for layer_output in parallel_layer_outputs]
                     if use_cache:
+                        # update next decoder cache with both the last layer's cache
                         next_decoder_cache = parallel_layer_outputs[-1][2 if output_attentions else 1]
                     
                     if output_attentions:
@@ -1936,9 +1973,6 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                 if output_attentions:
                     all_self_attns += (layer_outputs[1],)
 
-            
-        
-
         hidden_states = self.norm(hidden_states)
 
         # add hidden states from the last decoder layer
@@ -1946,8 +1980,8 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
             all_hidden_states += (hidden_states,)
 
         next_cache = next_decoder_cache if use_cache else None
-        # if return_legacy_cache:
-        #     next_cache = next_cache.to_legacy_cache()
+        if return_legacy_cache:
+            next_cache = next_cache.to_legacy_cache()
 
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
