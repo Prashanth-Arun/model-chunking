@@ -194,10 +194,10 @@ class Qwen2ChunkingConfig(Qwen2Config):
     model_type = "qwen2_chunking"
     def __init__(
         self, 
-        num_layers_per_chunk: int = 6, 
-        chunking_mode: str = "sequential", 
+        num_layers_per_chunk: int = 8, 
+        chunking_mode: str = "uniform_with_shared_start", 
         aggregation_mode: str = "mlp",
-        use_adapters: bool = True,
+        use_adapters: bool = False,
         adapter_hidden_size: Optional[int] = None,
         layers_to_prune: Optional[list[int]] = None,
         **kwargs

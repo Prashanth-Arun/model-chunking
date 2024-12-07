@@ -1,9 +1,25 @@
 {
-    "qwen2.5_pro_magpie": {
+  "qwen2.5_pro_magpie": {
     "hf_hub_url": "Magpie-Align/Magpie-Qwen2.5-Pro-1M-v0.1",
     "formatting": "sharegpt",
     "columns": {
       "messages": "conversations"
+    }
+  },
+  "wikitext-2-v1": {
+    "hf_hub_url": "Salesforce/wikitext",
+    "subset": "wikitext-2-v1",
+    "split": "train",
+    "columns": {
+      "prompt": "text"
+    }
+  },
+  "wikitext-103-v1": {
+    "hf_hub_url": "Salesforce/wikitext",
+    "subset": "wikitext-103-v1",
+    "split": "train",
+    "columns": {
+      "prompt": "text"
     }
   }
 }

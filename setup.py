@@ -16,7 +16,7 @@ setup(
         "torch",
         "torch",
         "accelerate",
-        "datasets==2.18.0"
+        "datasets"
     ],
     extras_require={
         "train": [

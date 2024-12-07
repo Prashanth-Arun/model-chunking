@@ -17,7 +17,7 @@ flash_attn: fa2
 
 ### dataset
 dataset: qwen2.5_pro_magpie
-dataset_dir: ../data
+dataset_dir: ./data
 template: qwen
 cutoff_len: 2048
 max_samples: 100000
