@@ -164,3 +164,6 @@ test_qwen2_chunking_mike.py
 logs
 
 .experiments
+/wandb
+/saves
+/.vscode

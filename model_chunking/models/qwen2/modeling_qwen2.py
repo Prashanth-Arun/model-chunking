@@ -1523,7 +1523,7 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk, num_chunks=None
 
     elif chunking_mode == "sequential_with_first_layer":
         all_chunk_layers = [layers[i : i + num_layers_per_chunk] for i in range(0, len(layers), num_layers_per_chunk)]
-        all_chunk_layers = [ModuleList([layers[0]]) + chunk_layers for chunk_layers in all_chunk_layers]
+        pre_chunking_layers.append(layers[0])
 
     elif chunking_mode == "uniform_with_first_layer":
         all_chunk_layers = []
@@ -1535,7 +1535,8 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk, num_chunks=None
             chunk_layer_idxs = [idx % len(layers) for idx in chunk_layer_idxs]
             all_chunk_layer_idxs.extend(chunk_layer_idxs)
             chunk_layers = [layers[idx] for idx in chunk_layer_idxs]
-            all_chunk_layers.append(ModuleList([layers[0]]) + ModuleList(chunk_layers))
+            all_chunk_layers.append(chunk_layers)
+        pre_chunking_layers.append(layers[0])
         assert set(all_chunk_layer_idxs) == set(range(len(layers))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers)}"
 
     elif chunking_mode == "prune":
@@ -1574,37 +1575,90 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk, num_chunks=None
         num_total_layers_to_chunk = num_chunks * num_layers_per_chunk
         assert (len(layers) - num_total_layers_to_chunk) % 2 == 0, f"len(layers): {len(layers)}, num_total_layers_to_chunk: {num_total_layers_to_chunk}" 
         shared_start_layer = layers[:(len(layers) - num_total_layers_to_chunk) // 2]
-        shared_end_layer = layers[-(len(layers) - num_total_layers_to_chunk) // 2:]
+        shared_end_layer = layers[(len(layers) - num_total_layers_to_chunk) // 2 + num_total_layers_to_chunk:]
         layers_to_chunk = layers[(len(layers) - num_total_layers_to_chunk) // 2:][:num_total_layers_to_chunk]
         all_chunk_layers = []
-        all_chunk_layer_idxs = []
-        num_chunk_layers = len(layers_to_chunk) // num_layers_per_chunk
-        num_chunk_layers += 1 if len(layers_to_chunk) % num_layers_per_chunk != 0 else 0
-        for i in range(num_chunk_layers):
-            chunk_layer_idxs = [i + j*num_chunk_layers for j in range(num_layers_per_chunk)]
-            chunk_layer_idxs = [idx % len(layers_to_chunk) for idx in chunk_layer_idxs]
-            all_chunk_layer_idxs.extend(chunk_layer_idxs)
-            chunk_layers = [layers_to_chunk[idx] for idx in chunk_layer_idxs]
-            all_chunk_layers.append(chunk_layers)
+        if layers_to_chunk:
+            all_chunk_layer_idxs = []
+            num_chunk_layers = len(layers_to_chunk) // num_layers_per_chunk
+            num_chunk_layers += 1 if len(layers_to_chunk) % num_layers_per_chunk != 0 else 0
+            for i in range(num_chunk_layers):
+                chunk_layer_idxs = [i + j*num_chunk_layers for j in range(num_layers_per_chunk)]
+                chunk_layer_idxs = [idx % len(layers_to_chunk) for idx in chunk_layer_idxs]
+                all_chunk_layer_idxs.extend(chunk_layer_idxs)
+                chunk_layers = [layers_to_chunk[idx] for idx in chunk_layer_idxs]
+                all_chunk_layers.append(chunk_layers)
+            assert set(all_chunk_layer_idxs) == set(range(len(layers_to_chunk))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers_to_chunk)}"
         pre_chunking_layers.extend(shared_start_layer)
         post_chunking_layers.extend(shared_end_layer)
-        assert set(all_chunk_layer_idxs) == set(range(len(layers_to_chunk))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers_to_chunk)}"
     elif chunking_mode == "sequential_with_shared_start_and_end":
         if num_chunks is None:
             num_chunks = 2
         num_total_layers_to_chunk = num_chunks * num_layers_per_chunk
         assert (len(layers) - num_total_layers_to_chunk) % 2 == 0, f"len(layers): {len(layers)}, num_total_layers_to_chunk: {num_total_layers_to_chunk}" 
         shared_start_layer = layers[:(len(layers) - num_total_layers_to_chunk) // 2]
-        shared_end_layer = layers[-(len(layers) - num_total_layers_to_chunk) // 2:]
+        shared_end_layer = layers[(len(layers) - num_total_layers_to_chunk) // 2 + num_total_layers_to_chunk:]
         layers_to_chunk = layers[(len(layers) - num_total_layers_to_chunk) // 2:][:num_total_layers_to_chunk]
-        all_chunk_layers = [layers_to_chunk[i : i + num_layers_per_chunk] for i in range(0, len(layers_to_chunk), num_layers_per_chunk)]
+        if layers_to_chunk:
+            all_chunk_layers = [layers_to_chunk[i : i + num_layers_per_chunk] for i in range(0, len(layers_to_chunk), num_layers_per_chunk)]
+        else:
+            all_chunk_layers = []
         pre_chunking_layers.extend(shared_start_layer)
         post_chunking_layers.extend(shared_end_layer)
     else:
         raise ValueError(f"Invalid chunking mode: {chunking_mode}")
     
+    assert sum([len(x) for x in all_chunk_layers]) + len(pre_chunking_layers) + len(post_chunking_layers) == len(layers), f"len(all_chunk_layers): {sum([len(x) for x in all_chunk_layers])}, len(pre_chunking_layers): {len(pre_chunking_layers)}, len(post_chunking_layers): {len(post_chunking_layers)}, len(layers): {len(layers)}"
+    assert set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers) == set(layers), f"set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers): {set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers)}, set(layers): {set(layers)}"
     return all_chunk_layers, pre_chunking_layers, post_chunking_layers
-import torch.multiprocessing as mp
+
+class Qwen2ChunkLayer(nn.Module):
+    def __init__(self, layers):
+        super().__init__()
+        self.layers = layers
+    
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: torch.Tensor = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        output_attentions: Optional[bool] = None,
+        use_cache: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        
+        for decoder_layer in self.layers:
+
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_values,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+            )
+
+            hidden_states = layer_outputs[0]
+
+            if use_cache:
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+
+            if output_attentions:
+                all_self_attns += (layer_outputs[1],)
+        
+        outputs = (hidden_states,)
+        if output_attentions:
+            outputs += (all_self_attns,)
+            
+        if use_cache:
+            outputs += (next_decoder_cache,)
+        
+        return outputs
+        
 @add_start_docstrings(
     "The bare Qwen2 Model outputting raw hidden-states without any specific head on top.",
     QWEN2_START_DOCSTRING,
@@ -1644,6 +1698,14 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
             num_chunks=self.num_chunks,
             layers_to_prune=config.layers_to_prune
         )
+        self.wrapped_chunk_layers = [Qwen2ChunkLayer(chunk_layers) for chunk_layers in all_chunk_layers]
+        self.pre_chunking_layers = pre_chunking_layers
+        self.post_chunking_layers = post_chunking_layers
+        self.all_chunk_layers = all_chunk_layers
+        
+        print("pre_chunking_layers: ", [layer.layer_idx for layer in self.pre_chunking_layers])
+        print("post_chunking_layers: ", [layer.layer_idx for layer in self.post_chunking_layers])
+        print("all_chunk_layers: ", [[layer.layer_idx for layer in chunk_layers] for chunk_layers in self.all_chunk_layers])
         
         # Instantiate a neural net if our aggregation method specifies as much
         if self.aggregation_mode == "mlp":
@@ -1780,14 +1842,9 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         
         # use torch.nn.parallel.parallel_apply for parallel chunking
         
-        all_chunk_layers, pre_chunking_layers, post_chunking_layers = chunking_layers(
-            layers=self.layers, 
-            chunking_mode=self.chunking_mode, 
-            num_layers_per_chunk=self.num_layers_per_chunk, 
-            num_chunks=self.num_chunks,
-            layers_to_prune=self.layers_to_prune
-        )
-        
+        pre_chunking_layers = self.pre_chunking_layers
+        post_chunking_layers = self.post_chunking_layers
+        all_chunk_layers = self.all_chunk_layers
         if pre_chunking_layers:
             for decoder_layer in pre_chunking_layers:
                 if output_hidden_states:
@@ -1834,38 +1891,61 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                 parallel_hidden_states = [initial_hidden_states for i in range(len(all_chunk_layers))]
                 # use torch.nn.parallel.parallel_apply
                 assert all([len(chunk_layers) == self.num_layers_per_chunk for chunk_layers in all_chunk_layers])
-                for i in range(self.num_layers_per_chunk):
-                    parallel_chunk_layers = [chunk_layers[i] for chunk_layers in all_chunk_layers]
-                    # devices = [parallel_chunk_layers[j].device for j in range(len(parallel_chunk_layers))] # this is not working, Qwen2DecoderLayer,
-                    devices = [parallel_chunk_layers[j].mlp.gate_proj.weight.device for j in range(len(parallel_chunk_layers))]
-                    # start computation for each chunk
-                    if output_hidden_states:
-                        all_hidden_states += tuple(parallel_hidden_states)
+                
+                parallel_chunk_layers = [chunk_layers[0] for chunk_layers in all_chunk_layers]
+                devices = [parallel_chunk_layers[j].mlp.gate_proj.weight.device for j in range(len(parallel_chunk_layers))]
+                kwargs_tup = [{
+                    "attention_mask": causal_mask.to(devices[j]) if causal_mask is not None else None,
+                    "position_ids": position_ids.to(devices[j]),
+                    "past_key_values": past_key_values,
+                    "output_attentions": output_attentions,
+                    "use_cache": use_cache,
+                    "cache_position": cache_position.to(devices[j]),
+                    "position_embeddings": [x.to(devices[j]) for x in position_embeddings]
+                } for j in range(len(parallel_chunk_layers))]
+                
+                outputs = torch.nn.parallel.parallel_apply(
+                    self.wrapped_chunk_layers,
+                    parallel_hidden_states,
+                    kwargs_tup=kwargs_tup,
+                    # devices=devices
+                )
+                
+                all_chunking_layer_outputs = [layer_output[0] for layer_output in outputs]
+                if use_cache:
+                    next_decoder_cache = outputs[-1][2 if output_attentions else 1]
+                
+                if output_attentions:
+                    all_self_attns += tuple(layer_output[1] for layer_output in outputs)
+                
+                
+                
+                
+                # for i in range(self.num_layers_per_chunk):
+                #     parallel_chunk_layers = [chunk_layers[i] for chunk_layers in all_chunk_layers]
+                #     # devices = [parallel_chunk_layers[j].device for j in range(len(parallel_chunk_layers))] # this is not working, Qwen2DecoderLayer,
+                #     _devices = [parallel_chunk_layers[j].mlp.gate_proj.weight.device for j in range(len(parallel_chunk_layers))]
+                #     assert devices == _devices, f"devices: {devices}, _devices: {_devices}"
+                #     # start computation for each chunk
+                #     if output_hidden_states:
+                #         all_hidden_states += tuple(parallel_hidden_states)
                     
-                    parallel_layer_outputs = torch.nn.parallel.parallel_apply(
-                        parallel_chunk_layers,
-                        parallel_hidden_states,
-                        kwargs_tup=[{
-                            "attention_mask": causal_mask,
-                            "position_ids": position_ids,
-                            "past_key_value": past_key_values,
-                            "output_attentions": output_attentions,
-                            "use_cache": use_cache,
-                            "cache_position": cache_position,
-                            "position_embeddings": position_embeddings
-                        } for j in range(len(parallel_chunk_layers))],
-                        devices=devices
-                    )
+                #     parallel_layer_outputs = torch.nn.parallel.parallel_apply(
+                #         parallel_chunk_layers,
+                #         parallel_hidden_states,
+                #         kwargs_tup=kwargs_tup,
+                #         devices=devices
+                #     )
                     
-                    parallel_hidden_states = [layer_output[0] for layer_output in parallel_layer_outputs]
-                    if use_cache:
-                        # update next decoder cache with both the last layer's cache
-                        next_decoder_cache = parallel_layer_outputs[-1][2 if output_attentions else 1]
+                #     parallel_hidden_states = [layer_output[0] for layer_output in parallel_layer_outputs]
+                #     if use_cache:
+                #         # update next decoder cache with both the last layer's cache
+                #         next_decoder_cache = parallel_layer_outputs[-1][2 if output_attentions else 1]
                     
-                    if output_attentions:
-                        all_self_attns += tuple(layer_output[1] for layer_output in parallel_layer_outputs)
+                #     if output_attentions:
+                #         all_self_attns += tuple(layer_output[1] for layer_output in parallel_layer_outputs)
                     
-                all_chunking_layer_outputs = parallel_hidden_states
+                # all_chunking_layer_outputs = parallel_hidden_states
                         
             else:
                 for i, chunk_layers in enumerate(all_chunk_layers):
