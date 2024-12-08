@@ -3,6 +3,10 @@ from tqdm.auto import tqdm
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 
+# # pre-chunking: [0,1,...,3]; chunking [[4, 6, ..., 18], [5, 7, ..., 19]], post-chunking: [20, ..., 23]
+# config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=8, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
+# device_map = {'model.embed_tokens': 0, 'lm_head': 0, 'model.layers.0': 0, 'model.layers.1': 0, 'model.layers.2': 0, 'model.layers.3': 0, 'model.layers.4': 0, 'model.layers.5': 1, 'model.layers.6': 0, 'model.layers.7': 1, 'model.layers.8': 0, 'model.layers.9': 1, 'model.layers.10': 0, 'model.layers.11': 1, 'model.layers.12': 0, 'model.layers.13': 1, 'model.layers.14': 0, 'model.layers.15': 1, 'model.layers.16': 0, 'model.layers.17': 1, 'model.layers.18': 0, 'model.layers.19': 1, 'model.layers.20': 1, 'model.layers.21': 1, 'model.layers.22': 1, 'model.layers.23': 1, 'model.norm': 1, 'model.rotary_emb': 1, 'model.aggregation_head': 1} # uniform
+
 # pre-chunking: [0,1,...,7]; chunking [[8, 10, ..., 14], [9, 11, ..., 15]], post-chunking: [16, ..., 23]
 config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=4, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
 device_map = {'model.embed_tokens': 0, 'lm_head': 0, 'model.layers.0': 0, 'model.layers.1': 0, 'model.layers.2': 0, 'model.layers.3': 0, 'model.layers.4': 0, 'model.layers.5': 0, 'model.layers.6': 0, 'model.layers.7': 0, 'model.layers.8': 0, 'model.layers.9': 1, 'model.layers.10': 0, 'model.layers.11': 1, 'model.layers.12': 0, 'model.layers.13': 1, 'model.layers.14': 0, 'model.layers.15': 1, 'model.layers.16': 1, 'model.layers.17': 1, 'model.layers.18': 1, 'model.layers.19': 1, 'model.layers.20': 1, 'model.layers.21': 1, 'model.layers.22': 1, 'model.layers.23': 1, 'model.norm': 1, 'model.rotary_emb': 1, 'model.aggregation_head': 1} # uniform
