@@ -1,0 +1,59 @@
+### method pt
+model_name_or_path: DongfuJiang/Qwen2.5-0.5B-Instruct
+stage: pt
+do_train: true
+finetuning_type: freeze
+freeze_trainable_modules: all
+freeze_trainable_layers: 2
+freeze_extra_modules: wrapped_chunk_layers
+dataset: wikitext-103-v1
+learning_rate: 1.0e-3
+output_dir: saves/qwen2_chunking_mlp_freeze_uniform_with_shared_start_and_end_pt
+run_name: qwen2_chunking_mlp_freeze_uniform_with_shared_start_and_end_pt
+
+# # ### method sft
+# model_name_or_path: /home/dongfu/WorkSpace/model-chunking/saves/qwen2_chunking_mlp_freeze_uniform_with_shared_start_and_end_pt
+# stage: sft
+# do_train: true
+# finetuning_type: freeze
+# freeze_trainable_modules: all
+# freeze_trainable_layers: 2
+# freeze_extra_modules: wrapped_chunk_layers
+# dataset: qwen2.5_pro_magpie
+# max_samples: 100000
+# learning_rate: 1.0e-5
+# output_dir: saves/qwen2_chunking_mlp_freeze_uniform_with_shared_start_and_end_sft
+# run_name: qwen2_chunking_mlp_freeze_uniform_with_shared_start_and_end_sft
+
+# deepspeed: examples/deepspeed/ds_z0_config.json
+flash_attn: fa2
+
+### dataset
+dataset_dir: ./data
+template: qwen
+cutoff_len: 2048
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+logging_steps: 10
+save_steps: 500
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+### eval
+val_size: 0.1
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 500
+
+report_to: wandb

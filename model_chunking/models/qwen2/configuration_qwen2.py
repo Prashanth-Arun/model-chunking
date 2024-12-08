@@ -194,13 +194,14 @@ class Qwen2ChunkingConfig(Qwen2Config):
     model_type = "qwen2_chunking"
     def __init__(
         self, 
-        num_layers_per_chunk: int = 8, 
-        num_chunks: Optional[int] = None,
-        chunking_mode: str = "uniform_with_shared_start", 
+        num_layers_per_chunk: int = 6, 
+        num_chunks: Optional[int] = 2,
+        chunking_mode: str = "uniform_with_shared_start_and_end", 
         aggregation_mode: str = "mlp",
-        use_adapters: bool = False,
+        use_adapters: bool = True,
         adapter_hidden_size: Optional[int] = None,
         layers_to_prune: Optional[list[int]] = None,
+        distillation: Optional[bool] = True,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -211,6 +212,7 @@ class Qwen2ChunkingConfig(Qwen2Config):
         self.use_adapters = use_adapters
         self.layers_to_prune = layers_to_prune
         self.adapter_hidden_size = adapter_hidden_size
+        self.distillation = distillation
 
     def __post_init__(self):
         if self.chunking_mode == "prune":

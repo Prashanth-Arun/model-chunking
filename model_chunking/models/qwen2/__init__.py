@@ -25,9 +25,14 @@ def infer_chunking_device_map(num_total_layers, num_layers_per_chunk, num_chunks
     num_non_chunking_layers_per_gpu = (num_non_chunking_layers - 1) // num_gpus + 1
     for i, layer in enumerate(pre_chunking_layers+post_chunking_layers):
         device_map[f"model.layers.{layer}"] = availables_devices[i // (num_non_chunking_layers_per_gpu)]
+    last_chunk_device = None
     for i, chunk_layers in enumerate(all_chunking_layers):
         for layer in chunk_layers:
             device_map[f"model.layers.{layer}"] = availables_devices[i % len(availables_devices)]
+        device_map[f"model.wrapped_chunk_layers.chunk_layers.{i}"] = availables_devices[i % len(availables_devices)]
+        last_chunk_device = availables_devices[i % len(availables_devices)]
+    if last_chunk_device is not None:
+        device_map["model.wrapped_chunk_layers.aggregation_head"] = last_chunk_device
     device_map["model.embed_tokens"] = availables_devices[0]
     device_map["lm_head"] = availables_devices[0]
     device_map["model.norm"] = availables_devices[-1]

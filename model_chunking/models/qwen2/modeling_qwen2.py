@@ -1612,10 +1612,29 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk, num_chunks=None
     assert set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers) == set(layers), f"set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers): {set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers)}, set(layers): {set(layers)}"
     return all_chunk_layers, pre_chunking_layers, post_chunking_layers
 
-class Qwen2ChunkLayer(nn.Module):
-    def __init__(self, layers):
+
+class Qwen2ChunkAdapter(nn.Module):
+    def __init__(self, config):
         super().__init__()
+        self.hidden_size = config.hidden_size
+        self.intermediate_size = config.intermediate_size
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.act_fn = ACT2FN[config.hidden_act]
+
+    def forward(self, hidden_state):
+        residual = hidden_state
+        hidden_state = self.down_proj(self.act_fn(self.up_proj(hidden_state)))
+        return hidden_state + residual
+class Qwen2ChunkLayer(nn.Module):
+    def __init__(self, config, layers, add_adapters=False):
+        super().__init__()
+        self.config = config
         self.layers = layers
+        self.add_adapters = add_adapters
+        if add_adapters:
+            for i in range(len(layers)):
+                setattr(self, f"adapter_{i}", Qwen2ChunkAdapter(config))
     
     def forward(
         self,
@@ -1627,10 +1646,17 @@ class Qwen2ChunkLayer(nn.Module):
         use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[torch.Tensor] = None,
+        output_hidden_states: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
-        
-        for decoder_layer in self.layers:
-
+        all_self_attns = ()
+        all_hidden_states = ()
+        for i, decoder_layer in enumerate(self.layers):
+            if self.add_adapters:
+                hidden_states = getattr(self, f"adapter_{i}")(hidden_states)
+            
+            if output_hidden_states:
+                all_hidden_states += (hidden_states,)
+                
             layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=attention_mask,
@@ -1656,9 +1682,159 @@ class Qwen2ChunkLayer(nn.Module):
             
         if use_cache:
             outputs += (next_decoder_cache,)
+            
+        if output_hidden_states:
+            outputs += (all_hidden_states,)
         
         return outputs
+    
+class Qwen2AggregationLayer(nn.Module):
+    def __init__(self, config, all_chunk_layers):
+        super().__init__()
+        self.config = config
+        self.aggregation_mode = config.aggregation_mode
+        if self.aggregation_mode == "mlp":
+            self.linear = nn.Linear(config.hidden_size * len(all_chunk_layers), config.hidden_size)
+            self.mlp = Qwen2MLP(config)
+    
+    def forward(
+        self,
+        all_chunking_layer_outputs: List[torch.Tensor],
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        # aggregation
+        if self.aggregation_mode == "mean":
+            hidden_states = torch.stack(all_chunking_layer_outputs).mean(dim=0)
+        elif self.aggregation_mode == "mlp":
+            hidden_states = torch.cat(all_chunking_layer_outputs, dim=-1)
+            hidden_states = self.linear(hidden_states)
+            hidden_states = self.mlp(hidden_states)
+        elif self.aggregation_mode == "last":
+            hidden_states = all_chunking_layer_outputs[-1]
+        else:
+            raise ValueError(f"Invalid aggregation mode: {self.aggregation_mode}")
         
+        return hidden_states
+        
+class Qwen2ChunkLayers(nn.Module):
+    def __init__(self, config, all_chunk_layers, add_adapters=False, aggregation_mode="mean"):
+        super().__init__()
+        self.config = config
+        self.all_chunk_layers = all_chunk_layers
+        self.add_adapters = add_adapters
+        self.num_layers_per_chunk = config.num_layers_per_chunk
+        assert all([len(chunk_layers) == self.num_layers_per_chunk for chunk_layers in all_chunk_layers])
+        self.chunk_layers = [Qwen2ChunkLayer(config, chunk_layers, add_adapters) for chunk_layers in all_chunk_layers]
+        for i, chunk_layers in enumerate(all_chunk_layers):
+            setattr(self, f"chunk_layers_{i}", self.chunk_layers[i])
+        self.aggregation_mode = aggregation_mode
+        self.aggregation_head = Qwen2AggregationLayer(config, all_chunk_layers)
+    
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        causal_mask: Optional[torch.Tensor] = None,
+        position_ids: torch.Tensor = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        output_attentions: Optional[bool] = None,
+        use_cache: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[torch.Tensor] = None,
+        output_hidden_states: Optional[bool] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        
+        initial_hidden_states = hidden_states
+        all_chunking_layer_outputs = []
+        all_hidden_states = {}
+        if not self.training or True:
+            parallel_hidden_states = [initial_hidden_states for i in range(len(self.all_chunk_layers))]
+            # use torch.nn.parallel.parallel_apply
+
+            parallel_chunk_layers = [chunk_layers[0] for chunk_layers in self.all_chunk_layers]
+            devices = [parallel_chunk_layers[j].mlp.gate_proj.weight.device for j in range(len(parallel_chunk_layers))]
+            kwargs_tup = [{
+                "attention_mask": causal_mask.to(devices[j]) if causal_mask is not None else None,
+                "position_ids": position_ids.to(devices[j]),
+                "past_key_values": past_key_values,
+                "output_attentions": output_attentions,
+                "use_cache": use_cache,
+                "cache_position": cache_position.to(devices[j]),
+                "position_embeddings": [x.to(devices[j]) for x in position_embeddings],
+                "output_hidden_states": output_hidden_states
+            } for j in range(len(parallel_chunk_layers))]
+            
+            outputs = torch.nn.parallel.parallel_apply(
+                self.chunk_layers,
+                parallel_hidden_states,
+                kwargs_tup=kwargs_tup,
+                # devices=devices
+            )
+            
+            all_chunking_layer_outputs = [layer_output[0] for layer_output in outputs]
+            if use_cache:
+                next_decoder_cache = outputs[-1][2 if output_attentions else 1]
+            
+            if output_attentions:
+                all_self_attns += tuple(layer_output[1] for layer_output in outputs)
+            
+            if output_hidden_states:
+                for i, layer_output in enumerate(outputs):
+                    chunk_layers = self.all_chunk_layers[i]
+                    outputs_all_hidden_states = layer_output[-1]
+                    chunk_layers_idx = [layer.layer_idx for layer in chunk_layers]
+                    assert len(chunk_layers_idx) == len(outputs_all_hidden_states), f"len(chunk_layers_idx): {len(chunk_layers_idx)}, len(outputs_all_hidden_states): {len(outputs_all_hidden_states)}"
+                    for j, layer_idx in enumerate(chunk_layers_idx):
+                        all_hidden_states[layer_idx] = outputs_all_hidden_states[j]
+            
+        else:
+            for i, chunk_layers in enumerate(self.chunk_layers):
+                # start computation for each chunk
+                hidden_states = initial_hidden_states
+                outputs = chunk_layers(
+                    hidden_states,
+                    attention_mask=causal_mask,
+                    position_ids=position_ids,
+                    past_key_values=past_key_values,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
+                    output_hidden_states=output_hidden_states
+                )
+                
+                all_chunking_layer_outputs.append(outputs[0]) # append outputs from each chunk
+                if use_cache:
+                    next_decoder_cache = outputs[2 if output_attentions else 1]
+                
+                if output_attentions:
+                    all_self_attns += (outputs[1],)
+                
+                if output_hidden_states:
+                    outputs_all_hidden_states = outputs[-1]
+                    chunk_layers_idx = [layer.layer_idx for layer in chunk_layers.layers]
+                    assert len(chunk_layers_idx) == len(outputs_all_hidden_states), f"len(chunk_layers_idx): {len(chunk_layers_idx)}, len(outputs_all_hidden_states): {len(outputs_all_hidden_states)}"
+                    for j, layer_idx in enumerate(chunk_layers_idx):
+                        all_hidden_states[layer_idx] = outputs_all_hidden_states[j]
+                
+        all_chunking_layer_outputs = [x.to(all_chunking_layer_outputs[-1].device) for x in all_chunking_layer_outputs]
+        # aggregation
+        hidden_states = self.aggregation_head(all_chunking_layer_outputs)
+        
+        outputs = (hidden_states,)
+        if output_attentions:
+            outputs += (all_self_attns,)
+            
+        if use_cache:
+            outputs += (next_decoder_cache,)
+        
+        if output_hidden_states:
+            # sort hidden states
+            all_hidden_states = {k: v for k, v in sorted(all_hidden_states.items(), key=lambda item: item[0])}
+            all_hidden_states = tuple(all_hidden_states.values())
+            outputs += (all_hidden_states,)
+            
+        return outputs
+                
+     
 @add_start_docstrings(
     "The bare Qwen2 Model outputting raw hidden-states without any specific head on top.",
     QWEN2_START_DOCSTRING,
@@ -1698,7 +1874,9 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
             num_chunks=self.num_chunks,
             layers_to_prune=config.layers_to_prune
         )
-        self.wrapped_chunk_layers = [Qwen2ChunkLayer(chunk_layers) for chunk_layers in all_chunk_layers]
+        if all_chunk_layers:
+            self.wrapped_chunk_layers = Qwen2ChunkLayers(config, all_chunk_layers, self.use_adapters, self.aggregation_mode)
+        
         self.pre_chunking_layers = pre_chunking_layers
         self.post_chunking_layers = post_chunking_layers
         self.all_chunk_layers = all_chunk_layers
@@ -1707,17 +1885,6 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         print("post_chunking_layers: ", [layer.layer_idx for layer in self.post_chunking_layers])
         print("all_chunk_layers: ", [[layer.layer_idx for layer in chunk_layers] for chunk_layers in self.all_chunk_layers])
         
-        # Instantiate a neural net if our aggregation method specifies as much
-        if self.aggregation_mode == "mlp":
-            self.aggregation_head = nn.Linear(self.config.hidden_size * len(all_chunk_layers), self.config.hidden_size)
-
-        # Instantiate the adapter networks if we specify that we're using them
-        if self.use_adapters:
-            # self.chunk_adapters = nn.ModuleList([nn.Linear(self.config.hidden_size, self.config.hidden_size) for i in range(len(self.layers))])
-            for i in range(len(all_chunk_layers)):
-                setattr(self, f"chunk_start_adapter_{i}", nn.Linear(self.config.hidden_size, self.config.hidden_size))
-                setattr(self, f"chunk_end_adapter_{i}", nn.Linear(self.config.hidden_size, self.config.hidden_size))
-
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
         self.post_init()
@@ -1726,7 +1893,132 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
         return self.embed_tokens
 
     def set_input_embeddings(self, value):
-        self.embed_tokens = value\
+        self.embed_tokens = value
+    
+    def original_forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
+                use_cache = False
+
+        # kept for BC (non `Cache` `past_key_values` inputs)
+        return_legacy_cache = False
+        if use_cache and not isinstance(past_key_values, Cache):
+            return_legacy_cache = True
+            if past_key_values is None:
+                past_key_values = DynamicCache()
+            else:
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                logger.warning_once(
+                    "We detected that you are passing `past_key_values` as a tuple of tuples. This is deprecated and "
+                    "will be removed in v4.47. Please convert your cache or use an appropriate `Cache` class "
+                    "(https://huggingface.co/docs/transformers/kv_cache#legacy-cache-format)"
+                )
+
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+
+        if cache_position is None:
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+            )
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
+
+        causal_mask = self._update_causal_mask(
+            attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
+        )
+
+        hidden_states = inputs_embeds
+
+        # create position embeddings to be shared across the decoder layers
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
+        # decoder layers
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attns = () if output_attentions else None
+        next_decoder_cache = None
+
+        for decoder_layer in self.layers:
+            if output_hidden_states:
+                all_hidden_states += (hidden_states,)
+
+            if self.gradient_checkpointing and self.training:
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
+                    hidden_states,
+                    causal_mask,
+                    position_ids,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
+                    cache_position,
+                    position_embeddings,
+                )
+            else:
+                layer_outputs = decoder_layer(
+                    hidden_states,
+                    attention_mask=causal_mask,
+                    position_ids=position_ids,
+                    past_key_value=past_key_values,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
+                )
+
+            hidden_states = layer_outputs[0]
+
+            if use_cache:
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+
+            if output_attentions:
+                all_self_attns += (layer_outputs[1],)
+
+        hidden_states = self.norm(hidden_states)
+
+        # add hidden states from the last decoder layer
+        if output_hidden_states:
+            all_hidden_states += (hidden_states,)
+
+        next_cache = next_decoder_cache if use_cache else None
+        if return_legacy_cache:
+            next_cache = next_cache.to_legacy_cache()
+
+        if not return_dict:
+            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+        return BaseModelOutputWithPast(
+            last_hidden_state=hidden_states,
+            past_key_values=next_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attns,
+        )
             
     @add_start_docstrings_to_model_forward(QWEN2_INPUTS_DOCSTRING)
     def forward(
@@ -1884,137 +2176,43 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                 
                 
         # chunking
-        initial_hidden_states = hidden_states
         if all_chunk_layers:
-            all_chunking_layer_outputs = []
-            if not self.training:
-                parallel_hidden_states = [initial_hidden_states for i in range(len(all_chunk_layers))]
-                # use torch.nn.parallel.parallel_apply
-                assert all([len(chunk_layers) == self.num_layers_per_chunk for chunk_layers in all_chunk_layers])
                 
-                parallel_chunk_layers = [chunk_layers[0] for chunk_layers in all_chunk_layers]
-                devices = [parallel_chunk_layers[j].mlp.gate_proj.weight.device for j in range(len(parallel_chunk_layers))]
-                kwargs_tup = [{
-                    "attention_mask": causal_mask.to(devices[j]) if causal_mask is not None else None,
-                    "position_ids": position_ids.to(devices[j]),
-                    "past_key_values": past_key_values,
-                    "output_attentions": output_attentions,
-                    "use_cache": use_cache,
-                    "cache_position": cache_position.to(devices[j]),
-                    "position_embeddings": [x.to(devices[j]) for x in position_embeddings]
-                } for j in range(len(parallel_chunk_layers))]
-                
-                outputs = torch.nn.parallel.parallel_apply(
-                    self.wrapped_chunk_layers,
-                    parallel_hidden_states,
-                    kwargs_tup=kwargs_tup,
-                    # devices=devices
+            if self.gradient_checkpointing and self.training:
+                chunk_layers_outputs = self._gradient_checkpointing_func(
+                    self.wrapped_chunk_layers.__call__,
+                    hidden_states,
+                    causal_mask,
+                    position_ids,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
+                    cache_position,
+                    position_embeddings,
+                    output_hidden_states
                 )
-                
-                all_chunking_layer_outputs = [layer_output[0] for layer_output in outputs]
-                if use_cache:
-                    next_decoder_cache = outputs[-1][2 if output_attentions else 1]
-                
-                if output_attentions:
-                    all_self_attns += tuple(layer_output[1] for layer_output in outputs)
-                
-                
-                
-                
-                # for i in range(self.num_layers_per_chunk):
-                #     parallel_chunk_layers = [chunk_layers[i] for chunk_layers in all_chunk_layers]
-                #     # devices = [parallel_chunk_layers[j].device for j in range(len(parallel_chunk_layers))] # this is not working, Qwen2DecoderLayer,
-                #     _devices = [parallel_chunk_layers[j].mlp.gate_proj.weight.device for j in range(len(parallel_chunk_layers))]
-                #     assert devices == _devices, f"devices: {devices}, _devices: {_devices}"
-                #     # start computation for each chunk
-                #     if output_hidden_states:
-                #         all_hidden_states += tuple(parallel_hidden_states)
-                    
-                #     parallel_layer_outputs = torch.nn.parallel.parallel_apply(
-                #         parallel_chunk_layers,
-                #         parallel_hidden_states,
-                #         kwargs_tup=kwargs_tup,
-                #         devices=devices
-                #     )
-                    
-                #     parallel_hidden_states = [layer_output[0] for layer_output in parallel_layer_outputs]
-                #     if use_cache:
-                #         # update next decoder cache with both the last layer's cache
-                #         next_decoder_cache = parallel_layer_outputs[-1][2 if output_attentions else 1]
-                    
-                #     if output_attentions:
-                #         all_self_attns += tuple(layer_output[1] for layer_output in parallel_layer_outputs)
-                    
-                # all_chunking_layer_outputs = parallel_hidden_states
-                        
             else:
-                for i, chunk_layers in enumerate(all_chunk_layers):
-                    # start computation for each chunk
-                    hidden_states = initial_hidden_states
-
-                    if self.use_adapters:
-                        start_adapter = getattr(self, f"chunk_start_adapter_{i}")
-                        end_adapter = getattr(self, f"chunk_end_adapter_{i}")
-                        hidden_states = start_adapter(hidden_states)
-                        
-                    for j, decoder_layer in enumerate(chunk_layers):
-                        if output_hidden_states:
-                            all_hidden_states += (hidden_states,)
-
-                        # if self.chunk_adapters is not None:
-                        #     adapter = self.chunk_adapters[i * len(all_chunk_layers) + j]
-                        #     hidden_states = adapter(hidden_states)
-                        
-
-                        # This is where we are getting some type of layer outputs
-                        if self.gradient_checkpointing and self.training:
-                            layer_outputs = self._gradient_checkpointing_func(
-                                decoder_layer.__call__,
-                                hidden_states,
-                                causal_mask,
-                                position_ids,
-                                past_key_values,
-                                output_attentions,
-                                use_cache,
-                                cache_position,
-                                position_embeddings,
-                            )
-                        else:
-                            layer_outputs = decoder_layer(
-                                hidden_states,
-                                attention_mask=causal_mask,
-                                position_ids=position_ids,
-                                past_key_value=past_key_values,
-                                output_attentions=output_attentions,
-                                use_cache=use_cache,
-                                cache_position=cache_position,
-                                position_embeddings=position_embeddings,
-                            )
-
-                        hidden_states = layer_outputs[0]
-                        
-                        if use_cache:
-                            next_decoder_cache = layer_outputs[2 if output_attentions else 1]
-
-                        if output_attentions:
-                            all_self_attns += (layer_outputs[1],)
+                chunk_layers_outputs = self.wrapped_chunk_layers(
+                    hidden_states,
+                    causal_mask=causal_mask,
+                    position_ids=position_ids,
+                    past_key_values=past_key_values,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
+                    output_hidden_states=output_hidden_states
+                )
+            hidden_states = chunk_layers_outputs[0]
+            
+            if use_cache:
+                next_decoder_cache = chunk_layers_outputs[2 if output_attentions else 1]
                 
-                    if self.use_adapters:
-                        hidden_states = end_adapter(hidden_states)
-                        
-                    all_chunking_layer_outputs.append(hidden_states) # append outputs from each chunk
-                    
-            all_chunking_layer_outputs = [x.to(all_chunking_layer_outputs[-1].device) for x in all_chunking_layer_outputs]
-            # aggregation
-            if self.aggregation_mode == "mean":
-                hidden_states = torch.stack(all_chunking_layer_outputs).mean(dim=0)
-            elif self.aggregation_mode == "mlp":
-                hidden_states = torch.cat(all_chunking_layer_outputs, dim=-1)
-                hidden_states = self.aggregation_head(hidden_states)
-            elif self.aggregation_mode == "last":
-                hidden_states = all_chunking_layer_outputs[-1]
-            else:
-                raise ValueError(f"Invalid aggregation mode: {self.aggregation_mode}")
+            if output_attentions:
+                all_self_attns += (chunk_layers_outputs[1],)
+            
+            if output_hidden_states:
+                all_hidden_states += chunk_layers_outputs[-1]
                     
         if post_chunking_layers:
             for decoder_layer in post_chunking_layers:
@@ -2215,7 +2413,8 @@ class Qwen2ChunkingModel(Qwen2PreTrainedModel):
                     padding_mask, min_dtype
                 )
         return causal_mask
-    
+
+import wandb    
     
 class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
     config_class = Qwen2ChunkingConfig
@@ -2302,13 +2501,24 @@ class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
+        if self.config.distillation:
+            output_hidden_states = True
+            if past_key_values is not None:
+                if not isinstance(past_key_values, tuple):
+                    past_key_values = (past_key_values, None)
+                chunking_past_key_values = past_key_values[0]
+                original_past_key_values = past_key_values[1]
+            else:
+                chunking_past_key_values = None
+                original_past_key_values = None
+        else:
+            chunking_past_key_values = past_key_values
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            past_key_values=past_key_values,
+            past_key_values=chunking_past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
             output_attentions=output_attentions,
@@ -2324,6 +2534,35 @@ class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
         loss = None
         if labels is not None:
             loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            
+        if self.config.distillation:
+            from torch.nn import functional as F
+            with torch.no_grad():
+                original_outputs = self.model.original_forward(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_values=original_past_key_values,
+                    inputs_embeds=inputs_embeds,
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                    cache_position=cache_position,
+                )
+            original_all_hidden_states = original_outputs.hidden_states
+            new_all_hidden_states = outputs.hidden_states
+            # apply product dot loss to all hidden states
+            distillation_loss = torch.tensor(0.0, device=hidden_states.device)
+            for i, (original_hidden_states, new_hidden_states) in enumerate(zip(original_all_hidden_states, new_all_hidden_states)):
+                cosine_similarity = F.cosine_similarity(original_hidden_states.to(new_hidden_states.device), new_hidden_states, dim=-1)
+                _loss = F.mse_loss(cosine_similarity, torch.ones_like(cosine_similarity))
+                # print(f"distillation_loss_{i}: ", _loss)
+                distillation_loss += _loss.to(distillation_loss.device)
+            # distillation_loss /= len(original_all_hidden_states)
+            # print("distillation_loss: ", distillation_loss)
+            print({"distillation_loss": distillation_loss.item()})
+            loss += distillation_loss.to(loss.device)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

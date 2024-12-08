@@ -3,11 +3,11 @@ from transformers import Qwen2ForCausalLM
 from tqdm.auto import tqdm
 
 model_name = "Qwen/Qwen2.5-7B-Instruct"
-num_gpu = 4
+num_gpu = 2
 batch_size=16
 
 # # pre-chunking: []; chunking [[0, 1, ..., 11], [12, 13, ..., 23]], post-chunking: []
-# config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=6, num_chunks=4, chunking_mode="sequential_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
+config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=6, num_chunks=2, chunking_mode="sequential_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False, distillation=True)
 
 # config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
 
@@ -15,13 +15,13 @@ batch_size=16
 # config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=8, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
 
 # pre-chunking: [0,1,...,7]; chunking [[8, 10, ..., 14], [9, 11, ..., 15]], post-chunking: [16, ..., 23]
-config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=4, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
+# config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=4, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
 
 # # pre-chunking: [0,1,...,8]; chunking [[9, 11, 13], [10, 12, 14]], post-chunking: [15, ..., 23]
 # config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=3, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
 
 # # # pre-chunking: [0,1,...,9]; chunking [[10, 12], [11, 13]], post-chunking: [14, ..., 23]
-# config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=2, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
+# config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=2, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mlp", use_adapters=True)
 
 # # # pre-chunking: [0,1,..., 11,]; chunking [], post-chunking: [12, ..., 23] # same as no chunking
 # config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=0, num_chunks=None, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
