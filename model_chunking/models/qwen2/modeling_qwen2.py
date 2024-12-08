@@ -2559,9 +2559,9 @@ class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
                 _loss = F.mse_loss(cosine_similarity, torch.ones_like(cosine_similarity))
                 # print(f"distillation_loss_{i}: ", _loss)
                 distillation_loss += _loss.to(distillation_loss.device)
-            # distillation_loss /= len(original_all_hidden_states)
+            distillation_loss /= len(original_all_hidden_states)
             # print("distillation_loss: ", distillation_loss)
-            print({"distillation_loss": distillation_loss.item()})
+            # print({"distillation_loss": distillation_loss.item()})
             loss += distillation_loss.to(loss.device)
 
         if not return_dict:

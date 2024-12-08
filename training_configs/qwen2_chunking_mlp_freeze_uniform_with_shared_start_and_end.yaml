@@ -4,7 +4,7 @@ stage: pt
 do_train: true
 finetuning_type: freeze
 freeze_trainable_modules: all
-freeze_trainable_layers: 2
+freeze_trainable_layers: 0
 freeze_extra_modules: wrapped_chunk_layers
 dataset: wikitext-103-v1
 learning_rate: 1.0e-3
