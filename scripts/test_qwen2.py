@@ -9,7 +9,7 @@ model = Qwen2ForCausalLM.from_pretrained(
 )
 tokenizer = Qwen2Tokenizer.from_pretrained(model_name)
 
-prompt = "Give me a short introduction to large language model."
+prompt = "Can you teach to how to use python to draw a turtle?"
 messages = [
     {"role": "system", "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
     {"role": "user", "content": prompt}
@@ -23,7 +23,7 @@ model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
 generated_ids = model.generate(
     **model_inputs,
-    max_new_tokens=512,
+    max_new_tokens=1024,
     do_sample=False
 )
 generated_ids = [
