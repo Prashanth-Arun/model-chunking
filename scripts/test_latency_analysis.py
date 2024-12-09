@@ -2,12 +2,15 @@ from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2ChunkingC
 from transformers import Qwen2ForCausalLM
 from tqdm.auto import tqdm
 
-model_name = "Qwen/Qwen2.5-7B-Instruct"
+model_name = "DongfuJiang/Qwen2.5-0.5B-Instruct"
 num_gpu = 2
 batch_size=16
 
+# # (Prashanth Adds) Load config directly from HF
+# config = Qwen2ChunkingConfig.from_pretrained(model_name)
+
 # # pre-chunking: []; chunking [[0, 1, ..., 11], [12, 13, ..., 23]], post-chunking: []
-config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=6, num_chunks=2, chunking_mode="sequential_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False, distillation=True)
+config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=6, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
 
 # config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=12, num_chunks=2, chunking_mode="uniform_with_shared_start_and_end", aggregation_mode="mean", use_adapters=False)
 
