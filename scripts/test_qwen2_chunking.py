@@ -1,7 +1,7 @@
 from model_chunking.models.qwen2 import Qwen2ChunkingForCausalLM, Qwen2ChunkingConfig, Qwen2Tokenizer, Qwen2Config
 from tqdm.auto import tqdm
 
-model_name = "/home/dongfu/WorkSpace/model-chunking/saves/qwen2_chunking_mlp_freeze_uniform_with_shared_start_sft"
+model_name = "DongfuJiang/qwen2_chunking_mlp_freeze_uniform_with_shared_start_and_end_2_6_sft"
 
 # config = Qwen2ChunkingConfig.from_pretrained(model_name, num_layers_per_chunk=24, chunking_mode="prune", layers_to_prune=[22, 23], aggregation_mode="mean", use_adapters=False)
 config = Qwen2ChunkingConfig.from_pretrained(model_name)
@@ -51,5 +51,6 @@ generated_ids = [
     output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
 ]
 
+print(generated_ids)
 response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 print(response)
