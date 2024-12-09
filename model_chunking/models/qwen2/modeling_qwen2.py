@@ -1540,14 +1540,16 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk, num_chunks=None
         assert set(all_chunk_layer_idxs) == set(range(len(layers))), f"all_chunk_layer_idxs: {all_chunk_layer_idxs}, len(layers): {len(layers)}"
 
     elif chunking_mode == "prune":
-        all_chunk_layers : list[Qwen2DecoderLayer] = []
+        all_chunks : list[Qwen2DecoderLayer] = []
         assert "layers_to_prune" in kwargs
         layers_to_prune : list[int] = kwargs['layers_to_prune']
         for i, layer in enumerate(layers):
             if (i + 1) in layers_to_prune:
                 continue
-            all_chunk_layers.append(layer)
-        all_chunk_layers = [all_chunk_layers]
+            all_chunks.append(layer)
+        pre_chunking_layers = all_chunks
+        all_chunk_layers = []
+        post_chunking_layers = []
     
     elif chunking_mode == "uniform_with_shared_start":
         shared_start_layer = layers[:num_layers_per_chunk]
@@ -1608,8 +1610,10 @@ def chunking_layers(layers, chunking_mode, num_layers_per_chunk, num_chunks=None
     else:
         raise ValueError(f"Invalid chunking mode: {chunking_mode}")
     
-    assert sum([len(x) for x in all_chunk_layers]) + len(pre_chunking_layers) + len(post_chunking_layers) == len(layers), f"len(all_chunk_layers): {sum([len(x) for x in all_chunk_layers])}, len(pre_chunking_layers): {len(pre_chunking_layers)}, len(post_chunking_layers): {len(post_chunking_layers)}, len(layers): {len(layers)}"
-    assert set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers) == set(layers), f"set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers): {set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers)}, set(layers): {set(layers)}"
+    if chunking_mode != "prune":
+        assert sum([len(x) for x in all_chunk_layers]) + len(pre_chunking_layers) + len(post_chunking_layers) == len(layers), f"len(all_chunk_layers): {sum([len(x) for x in all_chunk_layers])}, len(pre_chunking_layers): {len(pre_chunking_layers)}, len(post_chunking_layers): {len(post_chunking_layers)}, len(layers): {len(layers)}"
+        assert set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers) == set(layers), f"set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers): {set([x for chunk_layers in all_chunk_layers for x in chunk_layers] + pre_chunking_layers + post_chunking_layers)}, set(layers): {set(layers)}"
+    
     return all_chunk_layers, pre_chunking_layers, post_chunking_layers
 
 
