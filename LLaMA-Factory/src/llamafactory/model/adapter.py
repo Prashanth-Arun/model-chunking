@@ -78,20 +78,25 @@ def _setup_freeze_tuning(
     if not num_layers:
         raise ValueError("Current model does not support freeze tuning.")
 
-    if finetuning_args.use_llama_pro:
-        if num_layers % finetuning_args.freeze_trainable_layers != 0:
-            raise ValueError(
-                "`num_layers` {} should be divisible by `num_layer_trainable` {}.".format(
-                    num_layers, finetuning_args.freeze_trainable_layers
-                )
-            )
+    # if finetuning_args.use_llama_pro:
+    #     if num_layers % finetuning_args.freeze_trainable_layers != 0:
+    #         raise ValueError(
+    #             "`num_layers` {} should be divisible by `num_layer_trainable` {}.".format(
+    #                 num_layers, finetuning_args.freeze_trainable_layers
+    #             )
+    #         )
 
-        stride = num_layers // finetuning_args.freeze_trainable_layers
-        trainable_layer_ids = range(stride - 1, num_layers + stride - 1, stride)
-    elif finetuning_args.freeze_trainable_layers > 0:  # fine-tuning the last n layers if num_layer_trainable > 0
-        trainable_layer_ids = range(max(0, num_layers - finetuning_args.freeze_trainable_layers), num_layers)
-    else:  # fine-tuning the first n layers if num_layer_trainable < 0
-        trainable_layer_ids = range(min(-finetuning_args.freeze_trainable_layers, num_layers))
+    #     stride = num_layers // finetuning_args.freeze_trainable_layers
+    #     trainable_layer_ids = range(stride - 1, num_layers + stride - 1, stride)
+    # elif finetuning_args.freeze_trainable_layers > 0:  # fine-tuning the last n layers if num_layer_trainable > 0
+    #     trainable_layer_ids = range(max(0, num_layers - finetuning_args.freeze_trainable_layers), num_layers)
+    # else:  # fine-tuning the first n layers if num_layer_trainable < 0
+    #     trainable_layer_ids = range(min(-finetuning_args.freeze_trainable_layers, num_layers))
+    if finetuning_args.freeze_trainable_layers == 0:
+        trainable_layer_ids = []
+    else:
+        trainable_layer_ids = list(map(int, finetuning_args.freeze_trainable_layers.split(",")))
+    
 
     hidden_modules = set()
     non_hidden_modules = set()

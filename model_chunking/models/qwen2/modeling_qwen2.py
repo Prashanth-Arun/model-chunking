@@ -2501,8 +2501,9 @@ class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        if self.config.distillation:
-            output_hidden_states = True
+        if self.config.distillation or self.config.logits_distillation:
+            if self.config.distillation:
+                output_hidden_states = True
             if past_key_values is not None:
                 if not isinstance(past_key_values, tuple):
                     past_key_values = (past_key_values, None)
@@ -2554,15 +2555,48 @@ class Qwen2ChunkingForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
             new_all_hidden_states = outputs.hidden_states
             # apply product dot loss to all hidden states
             distillation_loss = torch.tensor(0.0, device=hidden_states.device)
+            post_chunking_layers = self.model.post_chunking_layers
+            post_chunking_layers_min_idx = min([layer.layer_idx for layer in post_chunking_layers])
             for i, (original_hidden_states, new_hidden_states) in enumerate(zip(original_all_hidden_states, new_all_hidden_states)):
+                if i < post_chunking_layers_min_idx:
+                    continue
                 cosine_similarity = F.cosine_similarity(original_hidden_states.to(new_hidden_states.device), new_hidden_states, dim=-1)
                 _loss = F.mse_loss(cosine_similarity, torch.ones_like(cosine_similarity))
                 # print(f"distillation_loss_{i}: ", _loss)
                 distillation_loss += _loss.to(distillation_loss.device)
             distillation_loss /= len(original_all_hidden_states)
-            # print("distillation_loss: ", distillation_loss)
             # print({"distillation_loss": distillation_loss.item()})
             loss += distillation_loss.to(loss.device)
+
+        if self.config.logits_distillation:
+            from torch.nn import functional as F
+            with torch.no_grad():
+                original_outputs = self.model.original_forward(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_values=original_past_key_values,
+                    inputs_embeds=inputs_embeds,
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                    cache_position=cache_position,
+                )
+            original_logits = self.lm_head(original_outputs.last_hidden_state)
+            new_logits = logits
+            batch_size, seq_len, vocab_size = original_logits.size()
+            
+            # Compute soft targets with temperature
+            soft_targets = F.softmax(original_logits / self.config.temperature, dim=-1)
+            soft_prob = F.log_softmax(new_logits / self.config.temperature, dim=-1)
+            # Compute distillation loss (soft targets)
+            distill_loss = F.kl_div(
+                soft_prob.view(-1, vocab_size),
+                soft_targets.view(-1, vocab_size),
+                reduction='batchmean'
+            ) * (self.config.temperature ** 2)
+            loss += distill_loss.to(loss.device)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

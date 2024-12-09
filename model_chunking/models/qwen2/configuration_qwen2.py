@@ -201,7 +201,9 @@ class Qwen2ChunkingConfig(Qwen2Config):
         use_adapters: bool = True,
         adapter_hidden_size: Optional[int] = None,
         layers_to_prune: Optional[list[int]] = None,
-        distillation: Optional[bool] = True,
+        distillation: Optional[bool] = False,
+        logits_distillation: Optional[bool] = False,
+        temperature: Optional[float] = 2.0,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -213,6 +215,8 @@ class Qwen2ChunkingConfig(Qwen2Config):
         self.layers_to_prune = layers_to_prune
         self.adapter_hidden_size = adapter_hidden_size
         self.distillation = distillation
+        self.logits_distillation = logits_distillation
+        self.temperature = temperature
 
     def __post_init__(self):
         if self.chunking_mode == "prune":
